@@ -8,7 +8,7 @@
 - **SEO/content pages** (basic): "funding for Amazon sellers / Relay carriers / DSP operators."
 
 ## Serverless functions (Phase 0–2)
-- `cert-signup.ts` — create Supabase Auth user + provisional/pending `partners` row → create DocuSign envelope from the ISO template → return signing URL or remote signing notice. Rate-limit by IP (1/hr) + email domain (1/day) through Supabase-backed shared rate limits.
+- `cert-signup.ts` — create Supabase Auth user + provisional/pending `partners` row -> create DocuSign envelope from the ISO template -> return embedded signing URL. Rate-limit by IP (1/hr) + email domain (1/day) through Supabase-backed shared rate limits.
 - `intake.ts` — **validate file by MIME + content** (csv/pdf/xlsx; ≤15 MB; CSV header check / PDF script scan), store to Storage, create `submissions` row → trigger W3. Enforce provisional cap (1 submission until certified; ≤3 uploads/day for new partners).
 - `checker.ts` — rules-only logo-match (Amazon/Relay/DSP descriptor + dominance) → `likely_fundable` / `needs_review` / `out_of_box`.
 - `portal-data.ts` — bearer-token authenticated read of the partner's submissions/commissions/rank/referral link.

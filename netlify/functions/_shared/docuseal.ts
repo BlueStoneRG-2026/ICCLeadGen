@@ -38,8 +38,6 @@ export async function createPartnerAgreementEnvelope(input: PartnerAgreementEnve
   });
   const basePath = env("DOCUSIGN_BASE_PATH", "https://demo.docusign.net/restapi").replace(/\/$/, "");
   const roleName = env("DOCUSIGN_TEMPLATE_ROLE_NAME", "Signer1");
-  const signingMode = env("DOCUSIGN_SIGNING_MODE", "embedded");
-  const embeddedSigning = signingMode !== "remote";
 
   const envelope = await docusignFetch<{ envelopeId: string }>(
     `${basePath}/v2.1/accounts/${encodeURIComponent(accountId)}/envelopes`,
@@ -54,7 +52,7 @@ export async function createPartnerAgreementEnvelope(input: PartnerAgreementEnve
             roleName,
             name: input.fullName,
             email: input.email,
-            ...(embeddedSigning ? { clientUserId: input.partnerId } : {}),
+            clientUserId: input.partnerId,
             tabs: buildTemplateTabs(input)
           }
         ],
@@ -69,30 +67,26 @@ export async function createPartnerAgreementEnvelope(input: PartnerAgreementEnve
     }
   );
 
-  let signingUrl = "docusign-email-sent";
-  if (embeddedSigning) {
-    const view = await docusignFetch<{ url: string }>(
-      `${basePath}/v2.1/accounts/${encodeURIComponent(accountId)}/envelopes/${encodeURIComponent(
-        envelope.envelopeId
-      )}/views/recipient`,
-      accessToken,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          returnUrl: env("DOCUSIGN_RETURN_URL", "https://partners.ironcrowncapital.com/#portal"),
-          authenticationMethod: "email",
-          email: input.email,
-          userName: input.fullName,
-          clientUserId: input.partnerId
-        })
-      }
-    );
-    signingUrl = view.url;
-  }
+  const view = await docusignFetch<{ url: string }>(
+    `${basePath}/v2.1/accounts/${encodeURIComponent(accountId)}/envelopes/${encodeURIComponent(
+      envelope.envelopeId
+    )}/views/recipient`,
+    accessToken,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        returnUrl: env("DOCUSIGN_RETURN_URL", "https://partners.ironcrowncapital.com/#portal"),
+        authenticationMethod: "email",
+        email: input.email,
+        userName: input.fullName,
+        clientUserId: input.partnerId
+      })
+    }
+  );
 
   return {
     envelopeId: envelope.envelopeId,
-    signingUrl,
+    signingUrl: view.url,
     provider: "docusign",
     stubbed: false
   };

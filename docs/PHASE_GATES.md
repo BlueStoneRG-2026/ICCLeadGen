@@ -27,7 +27,7 @@ where schemaname = 'public'
 Done when a stranger can:
 
 - Complete the certification signup.
-- Receive a DocuSign signing URL or remote signing notice.
+- Receive an embedded DocuSign signing URL.
 - Sign the ISO agreement.
 - Become `certified` through the DocuSign Connect webhook if not pending manual vetting.
 - See only their own portal rows.

@@ -3,7 +3,7 @@
 ## Phase 0–2 workflows (build now)
 **W1 — Certification + e-sign**
 - Trigger: `cert-signup` (Netlify) creates Supabase Auth user + provisional/pending `partners` row (referral_token generated).
-- Step: call DocuSign API to create an envelope from the operator's ISO partner agreement template → return signing URL or remote signing notice.
+- Step: call DocuSign API to create an envelope from the operator's ISO partner agreement template -> return an embedded signing URL.
 
 **W2 — DocuSign completed (idempotent)** — implement as a **Supabase Edge Function**, not n8n (reliability):
 - Receive DocuSign Connect webhook → HMAC verify → look up partner from envelope custom fields; if already `certified` with the same `esign_envelope_id`, return 200 and stop.

@@ -16,7 +16,7 @@
 > "Walk me through verifying the Phase 0 gate: a record writing end-to-end and a seed email passing SendGrid domain authentication / DMARC. Give me the exact commands/checks."
 
 ### P1-1 (Phase 1 — certification + e-sign)
-> "Build Phase 1: the certification funnel pages (landing → static training → short quiz → signup), `cert-signup.ts` (creates a Supabase Auth user + provisional/pending partners row + referral_token, then a DocuSign envelope from the operator's ISO agreement template, returns the signing URL or remote signing notice), and the DocuSign Connect Edge Function (HMAC-verified, idempotent on esign_envelope_id, promotes to certified, emails badge + cheat sheet + portal link). Enforce Supabase-backed signup rate limits and the corporate-email-vs-manual-vetting rule from `09_SECURITY_ABUSE.md`."
+> "Build Phase 1: the certification funnel pages (landing -> static training -> short quiz -> signup), `cert-signup.ts` (creates a Supabase Auth user + provisional/pending partners row + referral_token, then a DocuSign envelope from the operator's ISO agreement template and returns an embedded signing URL), and the DocuSign Connect Edge Function (HMAC-verified, idempotent on esign_envelope_id, promotes to certified, emails badge + cheat sheet + portal link). Enforce Supabase-backed signup rate limits and the corporate-email-vs-manual-vetting rule from `09_SECURITY_ABUSE.md`."
 
 ### P1-2 (portal)
 > "Build the partner portal on Supabase Auth + RLS: submissions list with status, commission ledger (new vs renewal, full rate), private rank, referral link, badge/cheat-sheet download. Confirm RLS so a partner sees only their own rows (auth.uid() = partners.id). Stop at the Phase 1 gate."

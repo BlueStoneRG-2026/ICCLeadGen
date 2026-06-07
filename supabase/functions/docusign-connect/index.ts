@@ -14,7 +14,14 @@ Deno.serve(async (req) => {
   const secret = Deno.env.get("DOCUSIGN_CONNECT_HMAC_SECRET") || "";
   const signature = req.headers.get("X-DocuSign-Signature-1") || "";
 
-  if (secret && (!signature || !(await verifyDocusignHmac(bodyText, secret, signature)))) {
+  if (!secret && !allowUnsignedWebhooks()) {
+    return new Response(JSON.stringify({ error: "Missing DocuSign Connect HMAC secret." }), {
+      status: 401,
+      headers: jsonHeaders
+    });
+  }
+
+  if (secret && (!signature || !(await safelyVerifyDocusignHmac(bodyText, secret, signature)))) {
     return new Response(JSON.stringify({ error: "Invalid DocuSign signature." }), {
       status: 401,
       headers: jsonHeaders
@@ -83,6 +90,32 @@ Deno.serve(async (req) => {
 
   return new Response(JSON.stringify({ ok: true, status: nextStatus }), { headers: jsonHeaders });
 });
+
+async function safelyVerifyDocusignHmac(body: string, secret: string, signatureHeader: string) {
+  try {
+    return await verifyDocusignHmac(body, secret, signatureHeader);
+  } catch (error) {
+    console.warn("DocuSign signature verification failed.", error);
+    return false;
+  }
+}
+
+function allowUnsignedWebhooks() {
+  if (Deno.env.get("ALLOW_UNSIGNED_WEBHOOKS") !== "true") {
+    return false;
+  }
+
+  return isLocalSupabaseRuntime();
+}
+
+function isLocalSupabaseRuntime() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  return (
+    Deno.env.get("SUPABASE_FUNCTIONS_LOCAL") === "true" ||
+    supabaseUrl.includes("127.0.0.1") ||
+    supabaseUrl.includes("localhost")
+  );
+}
 
 function extractEnvelopeStatus(payload: any) {
   return String(

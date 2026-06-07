@@ -14,7 +14,14 @@ Deno.serve(async (req) => {
   const bodyText = await req.text();
   const publicKey = Deno.env.get("SENDGRID_EVENT_PUBLIC_KEY") || "";
 
-  if (publicKey && !(await verifySendGridSignature(req, bodyText, publicKey))) {
+  if (!publicKey && !allowUnsignedWebhooks()) {
+    return new Response(JSON.stringify({ error: "Missing SendGrid signature verification key." }), {
+      status: 401,
+      headers: jsonHeaders
+    });
+  }
+
+  if (publicKey && !(await safelyVerifySendGridSignature(req, bodyText, publicKey))) {
     return new Response(JSON.stringify({ error: "Invalid SendGrid signature." }), {
       status: 401,
       headers: jsonHeaders
@@ -46,6 +53,32 @@ Deno.serve(async (req) => {
     headers: jsonHeaders
   });
 });
+
+async function safelyVerifySendGridSignature(req: Request, bodyText: string, publicKeyPem: string) {
+  try {
+    return await verifySendGridSignature(req, bodyText, publicKeyPem);
+  } catch (error) {
+    console.warn("SendGrid signature verification failed.", error);
+    return false;
+  }
+}
+
+function allowUnsignedWebhooks() {
+  if (Deno.env.get("ALLOW_UNSIGNED_WEBHOOKS") !== "true") {
+    return false;
+  }
+
+  return isLocalSupabaseRuntime();
+}
+
+function isLocalSupabaseRuntime() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  return (
+    Deno.env.get("SUPABASE_FUNCTIONS_LOCAL") === "true" ||
+    supabaseUrl.includes("127.0.0.1") ||
+    supabaseUrl.includes("localhost")
+  );
+}
 
 async function verifySendGridSignature(req: Request, bodyText: string, publicKeyPem: string) {
   const signatureHeader = req.headers.get("X-Twilio-Email-Event-Webhook-Signature") || "";

@@ -25,6 +25,8 @@ supabase secrets set CERTIFIED_EMAIL_WEBHOOK_URL=https://YOUR_NETLIFY_DOMAIN/.ne
 supabase secrets set INTERNAL_WEBHOOK_SECRET=...
 ```
 
+Webhook verification fails closed in deployed Supabase environments. `DOCUSIGN_CONNECT_HMAC_SECRET` and `SENDGRID_EVENT_PUBLIC_KEY` are required in production. `ALLOW_UNSIGNED_WEBHOOKS=true` is only for local Supabase testing and is ignored unless the runtime is pointed at localhost/127.0.0.1 or explicitly marked local.
+
 ## 2. Netlify
 
 1. Create a Netlify site from this repo.
@@ -64,11 +66,12 @@ DOCUSIGN_PRIVATE_KEY=
 DOCUSIGN_ACCOUNT_ID=
 DOCUSIGN_ISO_TEMPLATE_ID=
 DOCUSIGN_TEMPLATE_ROLE_NAME=Signer1
-DOCUSIGN_SIGNING_MODE=embedded
 DOCUSIGN_RETURN_URL=https://partners.ironcrowncapital.com/#portal
 DOCUSIGN_FIELD_MAP_JSON={}
 DOCUSIGN_CONNECT_HMAC_SECRET=
 ```
+
+The ISO agreement flow uses embedded/in-app signing only. The envelope includes `clientUserId = partner_id`, returns a recipient view URL using `DOCUSIGN_RETURN_URL`, and stores `partner_id` as a DocuSign text custom field so the Connect webhook can reconcile the completed envelope.
 
 Configure DocuSign Connect:
 
@@ -86,6 +89,8 @@ ADMIN_EMAILS=operator@example.com,va@example.com
 ```
 
 Those users must exist in Supabase Auth. Netlify Functions verify the bearer token email against the allowlist.
+
+`LOCAL_ADMIN_BYPASS=true` is for local/dev only. Deployed Netlify functions ignore it and continue to require Supabase Auth plus the `ADMIN_EMAILS` allowlist.
 
 ## 6. Phase 3 deferred infrastructure
 

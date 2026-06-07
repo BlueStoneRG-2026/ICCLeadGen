@@ -8,7 +8,7 @@ Use this after Supabase, Netlify, SendGrid, and DocuSign are configured. VPS/n8n
 2. Go to `#certify`.
 3. Submit a corporate email.
 4. Confirm `partners.status = provisional`.
-5. Open the returned DocuSign signing URL, or complete the DocuSign remote signing email if `DOCUSIGN_SIGNING_MODE=remote`.
+5. Open the returned embedded DocuSign signing URL.
 6. Complete signing.
 7. Confirm the `docusign-connect` Edge Function sets `partners.status = certified` and records `esign_envelope_id`.
 

@@ -44,7 +44,7 @@ export async function requireUser(event: HandlerEvent) {
 }
 
 export async function requireAdmin(event: HandlerEvent) {
-  if (env("LOCAL_ADMIN_BYPASS") === "true") {
+  if (localAdminBypassAllowed()) {
     return { email: "local-admin@example.com" };
   }
 
@@ -60,6 +60,21 @@ export async function requireAdmin(event: HandlerEvent) {
   }
 
   return user;
+}
+
+function localAdminBypassAllowed() {
+  if (env("LOCAL_ADMIN_BYPASS") !== "true") {
+    return false;
+  }
+
+  if (env("NETLIFY") === "true" && env("NETLIFY_DEV") !== "true") {
+    console.warn("LOCAL_ADMIN_BYPASS is ignored outside local/dev environments.");
+    return false;
+  }
+
+  const context = env("CONTEXT").toLowerCase();
+  const nodeEnv = env("NODE_ENV").toLowerCase();
+  return env("NETLIFY_DEV") === "true" || context === "dev" || nodeEnv === "development";
 }
 
 export function handleFunctionError(error: unknown) {

@@ -15,9 +15,9 @@ This branch updates the Phase 0-2 File Desk build after Claude's review. The cur
 
 ## Things To Review Closely
 
-1. DocuSign mode: the helper defaults to embedded signing to preserve the existing "return a signing URL" UX. If Juan prefers DocuSign remote-email signing, set `DOCUSIGN_SIGNING_MODE=remote` and adjust the certification copy.
-2. DocuSign field map: `DOCUSIGN_FIELD_MAP_JSON` accepts either a full `tabs` object or simple tab-label-to-source mappings. Test against Juan's actual ISO template labels.
-3. SendGrid signature verification: `sendgrid-events` expects the public verification key from SendGrid's Signed Event Webhook settings.
+1. Webhook verification now fails closed. Missing `SENDGRID_EVENT_PUBLIC_KEY` or `DOCUSIGN_CONNECT_HMAC_SECRET` returns 401 unless `ALLOW_UNSIGNED_WEBHOOKS=true` is used against a local Supabase runtime only.
+2. DocuSign mode is embedded/in-app signing. The helper always creates a recipient view using `DOCUSIGN_RETURN_URL`, sets `clientUserId` to `partner_id`, and writes `partner_id` as a text custom field for Connect reconciliation.
+3. DocuSign field map: `DOCUSIGN_FIELD_MAP_JSON` accepts either a full `tabs` object or simple tab-label-to-source mappings. Test against Juan's actual ISO template labels.
 4. Rate limits: the shared table is intentionally tiny and cheap. If abuse grows, add cleanup for stale `rate_limits` rows.
 5. Admin audit trail: still deferred. A fifth audit table is worth approving once a VA is marking deals funded.
 
