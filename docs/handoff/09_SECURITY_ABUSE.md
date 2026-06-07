@@ -17,6 +17,6 @@
 
 ## Data security
 - **RLS** so a partner sees only their own rows (`auth.uid() = partners.id`).
-- Webhooks verify signing secrets (DocuSeal, SES).
-- Idempotency on the DocuSeal webhook (`esign_envelope_id`).
+- Webhooks verify signing secrets (DocuSign Connect HMAC, SendGrid signed Event Webhook).
+- Idempotency on the DocuSign webhook (`esign_envelope_id`).
 - Secrets only in n8n's credential store / env, never in exports.

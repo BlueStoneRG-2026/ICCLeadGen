@@ -1,6 +1,6 @@
 # End-to-End Test Script
 
-Use this after Supabase, Netlify, SES, DocuSeal, and VPS services are configured.
+Use this after Supabase, Netlify, SendGrid, and DocuSign are configured. VPS/n8n/DocuSeal is Phase 3 and should not be running for this test.
 
 ## 1. Corporate partner certification
 
@@ -8,11 +8,11 @@ Use this after Supabase, Netlify, SES, DocuSeal, and VPS services are configured
 2. Go to `#certify`.
 3. Submit a corporate email.
 4. Confirm `partners.status = provisional`.
-5. Open the returned DocuSeal signing URL.
+5. Open the returned DocuSign signing URL, or complete the DocuSign remote signing email if `DOCUSIGN_SIGNING_MODE=remote`.
 6. Complete signing.
-7. Confirm the `docuseal-webhook` sets `partners.status = certified` and records `esign_envelope_id`.
+7. Confirm the `docusign-connect` Edge Function sets `partners.status = certified` and records `esign_envelope_id`.
 
-Expected: certified partner receives the credential email and can open the partner portal.
+Expected: certified partner receives the branded credential email and can open the partner portal after Supabase Auth sign-in.
 
 ## 2. Generic email vetting
 
@@ -20,7 +20,7 @@ Expected: certified partner receives the credential email and can open the partn
 2. Confirm `partners.status = pending_manual_vetting`.
 3. Try a Rescue Challenge upload.
 
-Expected: the upload does not route until the VA approves the partner in `#admin`.
+Expected: the upload does not route until the VA approves the partner in `#admin`; admin access requires an allowlisted Supabase Auth session.
 
 ## 3. Rescue Challenge upload
 

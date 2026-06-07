@@ -11,39 +11,27 @@ Deno.serve(async (req) => {
   }
 
   const bodyText = await req.text();
-  const secret = Deno.env.get("DOCUSEAL_WEBHOOK_SECRET") || "";
-  const signature = req.headers.get("x-docuseal-signature") || req.headers.get("x-signature") || "";
+  const secret = Deno.env.get("DOCUSIGN_CONNECT_HMAC_SECRET") || "";
+  const signature = req.headers.get("X-DocuSign-Signature-1") || "";
 
-  if (secret && (!signature || !(await verifyHmac(bodyText, secret, signature)))) {
-    return new Response(JSON.stringify({ error: "Invalid signature." }), {
+  if (secret && (!signature || !(await verifyDocusignHmac(bodyText, secret, signature)))) {
+    return new Response(JSON.stringify({ error: "Invalid DocuSign signature." }), {
       status: 401,
       headers: jsonHeaders
     });
   }
 
   const payload = JSON.parse(bodyText);
-  const eventText = JSON.stringify(payload).toLowerCase();
-  if (!/(completed|complete|signed|submitter.completed)/.test(eventText)) {
-    return new Response(JSON.stringify({ ok: true, ignored: true }), { headers: jsonHeaders });
+  const status = extractEnvelopeStatus(payload);
+  if (status !== "completed") {
+    return new Response(JSON.stringify({ ok: true, ignored: true, status }), { headers: jsonHeaders });
   }
 
-  const envelopeId = String(
-    payload.submission_id ||
-      payload.submission?.id ||
-      payload.data?.submission_id ||
-      payload.data?.id ||
-      payload.id ||
-      ""
-  );
-  const partnerId =
-    payload.metadata?.partner_id ||
-    payload.data?.metadata?.partner_id ||
-    payload.submission?.metadata?.partner_id ||
-    payload.submitters?.[0]?.metadata?.partner_id ||
-    payload.data?.submitters?.[0]?.metadata?.partner_id;
+  const envelopeId = extractEnvelopeId(payload);
+  const partnerId = extractCustomField(payload, "partner_id");
 
   if (!envelopeId || !partnerId) {
-    return new Response(JSON.stringify({ error: "Missing envelope or partner metadata." }), {
+    return new Response(JSON.stringify({ error: "Missing envelope ID or partner custom field." }), {
       status: 422,
       headers: jsonHeaders
     });
@@ -96,6 +84,38 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify({ ok: true, status: nextStatus }), { headers: jsonHeaders });
 });
 
+function extractEnvelopeStatus(payload: any) {
+  return String(
+    payload.data?.envelopeSummary?.status ||
+      payload.envelopeStatus?.status ||
+      payload.status ||
+      payload.event ||
+      ""
+  )
+    .toLowerCase()
+    .replace("envelope-", "");
+}
+
+function extractEnvelopeId(payload: any) {
+  return String(
+    payload.data?.envelopeId ||
+      payload.envelopeId ||
+      payload.envelopeStatus?.envelopeId ||
+      payload.data?.envelopeSummary?.envelopeId ||
+      ""
+  );
+}
+
+function extractCustomField(payload: any, name: string) {
+  const fields =
+    payload.data?.envelopeSummary?.customFields?.textCustomFields ||
+    payload.envelopeStatus?.customFields?.textCustomFields ||
+    payload.customFields?.textCustomFields ||
+    [];
+  const field = fields.find((item: any) => item.name === name || item.fieldId === name);
+  return field?.value || payload.data?.customFields?.[name] || payload.customFields?.[name] || "";
+}
+
 async function sendCertifiedEmail(email: string, fullName: string, referralToken: string) {
   const url = Deno.env.get("CERTIFIED_EMAIL_WEBHOOK_URL");
   if (!url) {
@@ -113,7 +133,7 @@ async function sendCertifiedEmail(email: string, fullName: string, referralToken
   });
 }
 
-async function verifyHmac(body: string, secret: string, signatureHeader: string) {
+async function verifyDocusignHmac(body: string, secret: string, signatureHeader: string) {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -123,9 +143,25 @@ async function verifyHmac(body: string, secret: string, signatureHeader: string)
     ["sign"]
   );
   const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-  const hex = Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-  const normalized = signatureHeader.replace(/^sha256=/, "");
-  return normalized.length === hex.length && normalized === hex;
+  const expected = bytesToBase64(new Uint8Array(digest));
+  return constantTimeEqual(expected, signatureHeader.trim());
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function constantTimeEqual(a: string, b: string) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+  return diff === 0;
 }

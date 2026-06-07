@@ -3,7 +3,7 @@
 ## A. Answers to the builder's 8 questions (authoritative)
 1. **Role:** You are the **builder**. Create the Phase 0–2 app + infra now. The PM chat directs you via `11_PM_RUNBOOK.md`.
 2. **Deliverable:** A **local deployable repo** with `.env.example` placeholders for all secrets + deploy docs. Do **not** wire live services; the operator deploys with his own credentials.
-3. **ISO agreement PDF:** Exists; operator provides at deploy. Build DocuSeal to accept a **configurable template ID + field mapping**; stub until provided.
+3. **ISO agreement template:** Exists; operator provides at deploy in DocuSign. Build DocuSign to accept a **configurable template ID + field mapping**; stub until provided.
 4. **Sending domain:** Configurable `SENDING_DOMAIN`, default `partners.ironcrowncapital.com` (Phase 0–2 transactional). Phase 3 cold outbound uses a **separate** domain. Operator confirms at deploy.
 5. **"Send to underwriting" route:** Configurable destination — Phase 0–2 = email the submission package to `UNDERWRITING_INTAKE_EMAIL` + flag in admin dashboard; design it swappable to a webhook later. Operator provides the address.
 6. **Admin/VA/operator access:** Separate **admin path** with an **email allowlist** (`app_admins`) via Supabase Auth + `role=admin` check. Distinct admin dashboard (VA queue, approve partners, mark funded). Never mixed with the partner portal.
@@ -13,7 +13,7 @@
    Generic-email signups → `pending_manual_vetting` (no submissions) → VA approves → `provisional`. Corporate emails → `provisional`. Still four tables.
 
 ## Operator-supplied values at deploy (the only blockers)
-`ISO agreement PDF + field map`, `SENDING_DOMAIN` + DNS access, `UNDERWRITING_INTAKE_EMAIL`, `app_admins` allowlist emails.
+`DocuSign ISO template ID + field map`, `SENDING_DOMAIN` + SendGrid DNS access, `UNDERWRITING_INTAKE_EMAIL`, `ADMIN_EMAILS` allowlist emails.
 
 ---
 

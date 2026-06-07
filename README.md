@@ -6,9 +6,9 @@ Phase 0-2 local deployable build for Iron Crown Capital's Amazon File Desk.
 
 - Vite + React frontend for Rescue Challenge, certification, partner portal, admin dashboard, and starter niche pages.
 - Netlify Functions for certification signup, Rescue Challenge intake, rules-only checker, partner portal data, admin actions, certified email, and unsubscribe suppression.
-- Supabase migration for the four-table Phase 0-2 model with RLS and the corrected `pending_manual_vetting` partner state.
-- Supabase Edge Functions for DocuSeal signed webhooks and SES bounce/complaint/unsubscribe events.
-- Docker Compose VPS stack for n8n, DocuSeal, Caddy, and Watchtower.
+- Supabase migration for the Phase 0-2 model with RLS, the corrected `pending_manual_vetting` partner state, shared rate limits, and immutable referral tokens.
+- Supabase Edge Functions for DocuSign Connect webhooks and SendGrid bounce/drop/spam suppression events.
+- Phase 3-only Docker Compose stack for n8n/Caddy/Watchtower plus DocuSeal as a future free e-sign fallback.
 - Handoff kit copied into `docs/handoff`.
 - Claude-facing review notes in `docs/CLAUDE_FEEDBACK.md`.
 
@@ -22,7 +22,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The frontend runs in demo mode until `VITE_DEMO_MODE=false` and live Supabase/Netlify values are supplied.
+The frontend runs in demo mode until `VITE_DEMO_MODE=false` and live Supabase/Netlify values are supplied. In live mode, the partner portal and admin dashboard use Supabase Auth sessions and send bearer tokens to the backend functions.
 
 For Netlify Functions locally:
 
@@ -33,8 +33,8 @@ netlify dev
 
 ## Deploy-time values Juan supplies
 
-- ISO partner agreement PDF and DocuSeal field map.
-- `SENDING_DOMAIN` plus SPF/DKIM/DMARC DNS access.
+- ISO partner agreement as a DocuSign template plus field map.
+- `SENDING_DOMAIN` plus SendGrid DNS authentication and DMARC access.
 - `UNDERWRITING_INTAKE_EMAIL`.
 - `ADMIN_EMAILS` allowlist for operator and VA accounts.
 
@@ -49,6 +49,9 @@ netlify dev
 
 ## Official infra references
 
-- n8n Docker docs: https://docs.n8n.io/hosting/installation/docker/
-- DocuSeal Docker image/docs: https://hub.docker.com/r/docuseal/docuseal and https://www.docuseal.com/docs/configuring-docuseal-via-environment-variables
-- Watchtower usage: https://containrrr.dev/watchtower/usage-overview/
+- SendGrid Event Webhook security: https://www.twilio.com/docs/sendgrid/for-developers/tracking-events/getting-started-event-webhook-security-features
+- SendGrid List-Unsubscribe: https://www.twilio.com/docs/sendgrid/ui/sending-email/list-unsubscribe
+- DocuSign JWT auth: https://developers.docusign.com/platform/auth/jwt-get-token/
+- DocuSign template envelopes: https://developers.docusign.com/docs/esign-rest-api/how-to/request-signature-template-remote/
+- DocuSign Connect HMAC: https://www.docusign.com/blog/developers/manually-authenticating-hmac-signatures-docusign-connect-webhook-configurations
+- Phase 3 n8n Docker docs: https://docs.n8n.io/hosting/installation/docker/

@@ -1,40 +1,25 @@
 # Claude Review Notes
 
-This repo is the Phase 0-2 local deployable build for ICC Amazon File Desk. It is intentionally scoped to first certified partner + first routed file + first commission event. Phase 3 sourcing/outbound/viral-loop work is deliberately deferred until a real funded deal passes through Phase 2.
+This branch updates the Phase 0-2 File Desk build after Claude's review. The current active stack is Netlify + Supabase + SendGrid + DocuSign. VPS/n8n/DocuSeal is deferred to Phase 3.
 
-## What Codex Built
+## What Changed After Claude's Review
 
-- Premium React/Vite frontend for Rescue Challenge, certification, partner portal, admin queue, and starter Amazon niche pages.
-- Netlify Functions for certification signup, intake, checker, portal data, admin data/actions, certified email, and unsubscribe.
-- Supabase migration with the corrected `pending_manual_vetting` partner state, RLS, four application tables, and private submission storage.
-- Supabase Edge Functions for DocuSeal signed webhooks and SES suppression events.
-- Docker Compose VPS stack for n8n, DocuSeal, Caddy, and Watchtower.
-- Deployment docs, Phase gates, and E2E test script.
-
-## Verification Done
-
-- `npm run build` passes.
-- `npm audit --audit-level=moderate` reports zero vulnerabilities.
-- Desktop and mobile browser checks were performed against the local app.
-- Certification demo flow reaches DocuSeal-stub state and referral token.
+- SES was replaced with SendGrid via `@sendgrid/mail`.
+- The old SES Edge Function was replaced by `sendgrid-events`, with signed Event Webhook verification and suppression writes for `bounce`, `dropped`, and `spamreport`.
+- DocuSeal envelope creation was replaced with DocuSign eSignature template envelope creation using JWT auth.
+- The old DocuSeal webhook was replaced by `docusign-connect`, with HMAC verification and idempotent completion handling.
+- Partner portal and admin dashboard now have real Supabase Auth sign-in/session handling in live mode.
+- In-memory signup rate limiting moved to a Supabase-backed `rate_limits` mechanism.
+- Transactional/status emails are wrapped in an ICC-branded HTML shell.
+- `partners.referral_token` is now immutable through a database trigger.
 
 ## Things To Review Closely
 
-1. Admin access model: current implementation uses `ADMIN_EMAILS` as the allowlist source to preserve the four-table constraint. If you prefer a real `app_admins` database object, decide whether that is a fifth table, a view, or auth metadata.
-2. Portal/admin auth UI: backend functions expect Supabase bearer tokens in live mode, but the frontend currently uses demo data unless `VITE_DEMO_MODE=false`. A production pass should add Supabase sign-in screens and session handling.
-3. DocuSeal webhook shape: the handler supports common payload fields and idempotency, but it should be tested against Juan's actual self-hosted DocuSeal event payload after the ISO template is uploaded.
-4. Underwriting handoff: Phase 0-2 sends the package to `UNDERWRITING_INTAKE_EMAIL`. The code is structured so a webhook can be added later, but that destination still needs Juan's real intake path.
-5. XLSX validation: I removed the vulnerable `xlsx` package and replaced it with lightweight OpenXML ZIP inspection. This is safer for intake validation, but if richer statement parsing is needed later, use a maintained parser with a clean audit.
-6. Email templates: transactional emails are functional and suppression-aware, but branded HTML templates could be made more polished before live partner traffic.
-7. Rate limits: in-memory rate limiting is fine for local/dev and a single warm function instance, but production should move rate limits to Supabase, Upstash, or another shared low-cost store if abuse appears.
-
-## Suggested Next Improvements
-
-- Add live Supabase Auth UI for partner portal and admin dashboard.
-- Add a small admin action audit trail without violating the Phase 0-2 four-table rule, or explicitly approve a fifth table if accountability matters more than the constraint.
-- Add integration tests for commission math, generic-email vetting, upload caps, and webhook idempotency.
-- Add a branded email partial/template system so status emails match the polish of the frontend.
-- After deployment, run the full `docs/TEST_SCRIPT.md` with a real DocuSeal template and SES sandbox/production identity.
+1. DocuSign mode: the helper defaults to embedded signing to preserve the existing "return a signing URL" UX. If Juan prefers DocuSign remote-email signing, set `DOCUSIGN_SIGNING_MODE=remote` and adjust the certification copy.
+2. DocuSign field map: `DOCUSIGN_FIELD_MAP_JSON` accepts either a full `tabs` object or simple tab-label-to-source mappings. Test against Juan's actual ISO template labels.
+3. SendGrid signature verification: `sendgrid-events` expects the public verification key from SendGrid's Signed Event Webhook settings.
+4. Rate limits: the shared table is intentionally tiny and cheap. If abuse grows, add cleanup for stale `rate_limits` rows.
+5. Admin audit trail: still deferred. A fifth audit table is worth approving once a VA is marking deals funded.
 
 ## Guardrails To Keep
 
@@ -42,4 +27,4 @@ This repo is the Phase 0-2 local deployable build for ICC Amazon File Desk. It i
 - Do not introduce MCA/funding-industry platform dependencies.
 - Do not build underwriting, deal scoring, UCC notices, enforcement, or settlement.
 - Keep the checker rules-only and never hard-reject files.
-- Keep transactional mail and cold outbound domains separate.
+- Keep transactional and future cold-outbound domains separate.

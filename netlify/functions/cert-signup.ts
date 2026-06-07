@@ -1,6 +1,6 @@
 import type { Handler } from "@netlify/functions";
 import { z } from "zod";
-import { createDocuSealEnvelope } from "./_shared/docuseal";
+import { createPartnerAgreementEnvelope } from "./_shared/docuseal";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
 import { sendTransactionalEmail } from "./_shared/email";
 import { getClientIp, jsonResponse, methodNotAllowed } from "./_shared/http";
@@ -29,10 +29,9 @@ export const handler: Handler = async (event) => {
   try {
     const payload = SignupSchema.parse(JSON.parse(event.body || "{}"));
     const ip = getClientIp(event.headers);
-    enforceRateLimit(`cert-ip:${ip}`, 1, 60 * 60 * 1000);
-    enforceRateLimit(`cert-domain:${emailDomain(payload.email)}`, 1, 24 * 60 * 60 * 1000);
-
     const supabase = supabaseAdmin();
+    await enforceRateLimit(supabase, `cert-ip:${ip}`, 1, 60 * 60 * 1000);
+    await enforceRateLimit(supabase, `cert-domain:${emailDomain(payload.email)}`, 1, 24 * 60 * 60 * 1000);
     const existing = await supabase
       .from("partners")
       .select("*")
@@ -47,9 +46,10 @@ export const handler: Handler = async (event) => {
     const token = existing.data?.referral_token || referralToken(payload.firmName);
     const userId = existing.data?.id || (await createAuthUser(payload.email, payload.fullName, payload.firmName));
 
-    const envelope = await createDocuSealEnvelope({
+    const envelope = await createPartnerAgreementEnvelope({
       email: payload.email,
       fullName: payload.fullName,
+      firmName: payload.firmName,
       partnerId: userId,
       referralToken: token
     });
@@ -79,8 +79,8 @@ export const handler: Handler = async (event) => {
     await sendTransactionalEmail({
       to: payload.email,
       subject: "ICC Amazon File Desk: ISO agreement ready",
-      text: `Your DocuSeal agreement is ready: ${envelope.signingUrl}`,
-      html: `<p>Your ICC Amazon File Desk ISO agreement is ready.</p><p><a href="${envelope.signingUrl}">Open the DocuSeal envelope</a></p>`
+      text: `Your DocuSign agreement is ready: ${envelope.signingUrl}`,
+      html: `<h1>Your ISO agreement is ready.</h1><p>The ICC Amazon File Desk created your DocuSign envelope. Open the signing session from the button below.</p><p><a href="${envelope.signingUrl}" style="background:#4b1217;border-radius:8px;color:#fffaf0;display:inline-block;font-weight:700;padding:13px 18px;text-decoration:none;">Open DocuSign</a></p>`
     });
 
     return jsonResponse(200, {
@@ -91,7 +91,7 @@ export const handler: Handler = async (event) => {
       message:
         status === "pending_manual_vetting"
           ? "Signup received. A VA must approve this partner before submissions open."
-          : "Signup created. Send the partner to the DocuSeal signing URL."
+          : "Signup created. Send the partner to the DocuSign signing URL."
     });
 
     async function createAuthUser(email: string, fullName: string, firmName: string) {

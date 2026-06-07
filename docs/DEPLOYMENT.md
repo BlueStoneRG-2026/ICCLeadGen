@@ -1,5 +1,7 @@
 # Deployment
 
+Phase 0-2 runs on Netlify + Supabase + SendGrid + DocuSign. Do not deploy the VPS/n8n/DocuSeal stack for Phase 0-2.
+
 ## 1. Supabase
 
 1. Create a Supabase project.
@@ -8,8 +10,8 @@
 4. Deploy Edge Functions:
 
 ```bash
-supabase functions deploy docuseal-webhook
-supabase functions deploy ses-events
+supabase functions deploy docusign-connect
+supabase functions deploy sendgrid-events
 ```
 
 5. Set Edge Function secrets:
@@ -17,8 +19,8 @@ supabase functions deploy ses-events
 ```bash
 supabase secrets set SUPABASE_URL=...
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...
-supabase secrets set DOCUSEAL_WEBHOOK_SECRET=...
-supabase secrets set SES_EVENTS_SECRET=...
+supabase secrets set DOCUSIGN_CONNECT_HMAC_SECRET=...
+supabase secrets set SENDGRID_EVENT_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----...'
 supabase secrets set CERTIFIED_EMAIL_WEBHOOK_URL=https://YOUR_NETLIFY_DOMAIN/.netlify/functions/certified-email
 supabase secrets set INTERNAL_WEBHOOK_SECRET=...
 ```
@@ -31,42 +33,49 @@ supabase secrets set INTERNAL_WEBHOOK_SECRET=...
 4. Set `VITE_DEMO_MODE=false`.
 5. Deploy.
 
-## 3. SES and DNS
+Live partner portal and admin dashboard access require Supabase Auth. The frontend stores the Supabase session and passes bearer tokens to `portal-data`, `admin-data`, and `admin-action`.
+
+## 3. SendGrid and DNS
 
 Use `SENDING_DOMAIN=partners.ironcrowncapital.com` unless Juan confirms another Phase 0-2 transactional domain.
 
-DNS records:
+Configure SendGrid domain authentication for the sending domain and add the CNAME/TXT records SendGrid provides. Keep DMARC at `p=none` for the first monitoring window, then move to quarantine/reject after healthy delivery.
 
-```txt
-partners.ironcrowncapital.com TXT "v=spf1 include:amazonses.com -all"
-_dmarc.partners.ironcrowncapital.com TXT "v=DMARC1; p=none; rua=mailto:dmarc@partners.ironcrowncapital.com; fo=1"
-```
+Configure SendGrid Event Webhook:
 
-Add the DKIM CNAME records SES provides for the domain. Start at `p=none`, move to quarantine around weeks 3-4, and reject around week 5+ after monitoring.
+- Endpoint: deployed Supabase `sendgrid-events` URL.
+- Events: at least `bounce`, `dropped`, and `spamreport`.
+- Security: enable Signed Event Webhook and copy the public verification key to `SENDGRID_EVENT_PUBLIC_KEY`.
 
-Configure SES bounce/complaint events to call the deployed `ses-events` Edge Function with `x-ses-events-secret`.
+The app also sends `List-Unsubscribe` and `List-Unsubscribe-Post` headers on transactional notices.
 
-## 4. VPS services
+## 4. DocuSign
 
-On the Hetzner VPS:
+Create the ISO partner agreement as a DocuSign template.
+
+Required values:
 
 ```bash
-cd infra
-cp .env.example .env
-openssl rand -hex 64
-docker compose up -d
-docker compose ps
+DOCUSIGN_AUTH_SERVER=account-d.docusign.com      # account.docusign.com for production
+DOCUSIGN_BASE_PATH=https://demo.docusign.net/restapi
+DOCUSIGN_INTEGRATION_KEY=
+DOCUSIGN_USER_ID=
+DOCUSIGN_PRIVATE_KEY=
+DOCUSIGN_ACCOUNT_ID=
+DOCUSIGN_ISO_TEMPLATE_ID=
+DOCUSIGN_TEMPLATE_ROLE_NAME=Signer1
+DOCUSIGN_SIGNING_MODE=embedded
+DOCUSIGN_RETURN_URL=https://partners.ironcrowncapital.com/#portal
+DOCUSIGN_FIELD_MAP_JSON={}
+DOCUSIGN_CONNECT_HMAC_SECRET=
 ```
 
-Put the generated secret into `DOCUSEAL_SECRET_KEY_BASE`. Point DNS for `N8N_HOST` and `DOCUSEAL_HOST` at the VPS before starting Caddy so TLS can issue.
+Configure DocuSign Connect:
 
-After Juan provides the ISO agreement PDF:
-
-1. Upload it into DocuSeal.
-2. Map signature/date/name/company fields.
-3. Put the template ID into `DOCUSEAL_TEMPLATE_ID`.
-4. Put any required field defaults into `DOCUSEAL_FIELD_MAP_JSON`.
-5. Configure DocuSeal webhook URL to the deployed Supabase `docuseal-webhook` endpoint.
+- Endpoint: deployed Supabase `docusign-connect` URL.
+- Event: envelope completed.
+- Include envelope custom fields in the payload.
+- Enable HMAC and set the same secret as `DOCUSIGN_CONNECT_HMAC_SECRET`.
 
 ## 5. Admin access
 
@@ -77,3 +86,7 @@ ADMIN_EMAILS=operator@example.com,va@example.com
 ```
 
 Those users must exist in Supabase Auth. Netlify Functions verify the bearer token email against the allowlist.
+
+## 6. Phase 3 deferred infrastructure
+
+`infra/` is preserved for later n8n/sourcing orchestration and a possible DocuSeal fallback. Do not deploy it until Phase 3 is explicitly approved.

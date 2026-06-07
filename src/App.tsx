@@ -11,14 +11,16 @@ import {
   Sparkles,
   UploadCloud
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   adminAction,
   certifyPartner,
   getAdminData,
   getPortalData,
-  submitRescue
+  submitRescue,
+  useDemoMode
 } from "./lib/api";
+import { getSupabaseBrowserClient, hasSupabaseBrowserConfig, type BrowserSession } from "./lib/supabase";
 import type { AdminData, CertificationResult, IntakeResult, PortalData, RoutingState } from "./types";
 
 type Route = "rescue" | "certify" | "portal" | "admin" | "content";
@@ -331,7 +333,7 @@ function CertificationFunnel({ onPortal }: { onPortal: () => void }) {
               </select>
             </label>
             <button className="primary-action" disabled={loading} type="submit">
-              {loading ? "Creating envelope..." : "Create DocuSeal envelope"}
+              {loading ? "Creating envelope..." : "Create DocuSign envelope"}
               <Send size={18} />
             </button>
             {error && <p className="form-error">{error}</p>}
@@ -345,7 +347,7 @@ function CertificationFunnel({ onPortal }: { onPortal: () => void }) {
             <p>{result.message}</p>
             <p className="mono-line">Referral token: {result.referralToken}</p>
             <a className="secondary-action" href={result.signingUrl}>
-              Open DocuSeal stub
+              Open DocuSign
             </a>
             <button className="primary-action" onClick={onPortal} type="button">
               View portal
@@ -359,11 +361,30 @@ function CertificationFunnel({ onPortal }: { onPortal: () => void }) {
 }
 
 function PartnerPortal() {
+  return (
+    <AuthGate
+      description="Sign in with the email tied to your ICC partner account."
+      render={(session) => <PartnerPortalContent accessToken={session?.access_token} />}
+      title="Partner portal"
+    />
+  );
+}
+
+function PartnerPortalContent({ accessToken }: { accessToken?: string }) {
   const [data, setData] = useState<PortalData | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    void getPortalData().then(setData);
-  }, []);
+    setData(null);
+    setError("");
+    void getPortalData(accessToken).then(setData).catch((err) => {
+      setError(err instanceof Error ? err.message : "Could not load portal data.");
+    });
+  }, [accessToken]);
+
+  if (error) {
+    return <ErrorPanel title="Portal unavailable" message={error} />;
+  }
 
   if (!data) {
     return <LoadingPanel label="Opening partner portal" />;
@@ -436,16 +457,35 @@ function PartnerPortal() {
 }
 
 function AdminDashboard() {
+  return (
+    <AuthGate
+      description="Admin access is restricted to the operator and VA allowlist."
+      render={(session) => <AdminDashboardContent accessToken={session?.access_token} />}
+      title="Admin path"
+    />
+  );
+}
+
+function AdminDashboardContent({ accessToken }: { accessToken?: string }) {
   const [data, setData] = useState<AdminData | null>(null);
   const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    void getAdminData().then(setData);
-  }, []);
+    setData(null);
+    setError("");
+    void getAdminData(accessToken).then(setData).catch((err) => {
+      setError(err instanceof Error ? err.message : "Could not load admin data.");
+    });
+  }, [accessToken]);
 
   async function run(action: string, payload: Record<string, unknown>) {
-    const response = await adminAction(action, payload);
+    const response = await adminAction(action, payload, accessToken);
     setNotice(response.message);
+  }
+
+  if (error) {
+    return <ErrorPanel title="Admin unavailable" message={error} />;
   }
 
   if (!data) {
@@ -621,6 +661,163 @@ function DataTable({ columns, rows }: { columns: string[]; rows: Array<Array<Rea
         </tbody>
       </table>
     </div>
+  );
+}
+
+function AuthGate({
+  title,
+  description,
+  render
+}: {
+  title: string;
+  description: string;
+  render: (session: BrowserSession | null) => React.ReactNode;
+}) {
+  const [session, setSession] = useState<BrowserSession | null>(null);
+  const [loading, setLoading] = useState(!useDemoMode());
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (useDemoMode() || !hasSupabaseBrowserConfig()) {
+      setLoading(false);
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    void supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setLoading(false);
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (useDemoMode()) {
+    return <>{render(null)}</>;
+  }
+
+  if (!hasSupabaseBrowserConfig()) {
+    return (
+      <ErrorPanel
+        title={`${title} needs Supabase`}
+        message="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, or leave demo mode enabled for local review."
+      />
+    );
+  }
+
+  if (loading) {
+    return <LoadingPanel label={`Checking ${title} session`} />;
+  }
+
+  if (session) {
+    return (
+      <>
+        <div className="session-bar">
+          <span>{session.user.email}</span>
+          <button
+            onClick={() => {
+              void getSupabaseBrowserClient().auth.signOut();
+            }}
+            type="button"
+          >
+            Sign out
+          </button>
+        </div>
+        {render(session)}
+      </>
+    );
+  }
+
+  async function signInWithPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    const supabase = getSupabaseBrowserClient();
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) {
+      setError(signInError.message);
+    }
+  }
+
+  async function sendMagicLink() {
+    setError("");
+    setNotice("");
+    if (!email) {
+      setError("Enter an email address first.");
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href }
+    });
+    if (otpError) {
+      setError(otpError.message);
+      return;
+    }
+    setNotice("Magic link sent. Open it in this browser to continue.");
+  }
+
+  return (
+    <section className="auth-page">
+      <div className="auth-panel">
+        <p className="eyebrow">{title}</p>
+        <h1>Sign in to continue.</h1>
+        <p>{description}</p>
+        <form className="stack" onSubmit={signInWithPassword}>
+          <label>
+            Email
+            <input
+              autoComplete="email"
+              onChange={(event) => setEmail(event.currentTarget.value)}
+              placeholder="you@firm.com"
+              required
+              type="email"
+              value={email}
+            />
+          </label>
+          <label>
+            Password
+            <input
+              autoComplete="current-password"
+              onChange={(event) => setPassword(event.currentTarget.value)}
+              placeholder="Optional if using magic link"
+              type="password"
+              value={password}
+            />
+          </label>
+          <div className="auth-actions">
+            <button className="primary-action" disabled={!password} type="submit">
+              Sign in
+              <LockKeyhole size={18} />
+            </button>
+            <button className="secondary-action" onClick={sendMagicLink} type="button">
+              Send magic link
+            </button>
+          </div>
+        </form>
+        {notice && <p className="success-note">{notice}</p>}
+        {error && <p className="form-error">{error}</p>}
+      </div>
+    </section>
+  );
+}
+
+function ErrorPanel({ title, message }: { title: string; message: string }) {
+  return (
+    <section className="loading-panel">
+      <div className="error-panel">
+        <h2>{title}</h2>
+        <p>{message}</p>
+      </div>
+    </section>
   );
 }
 
