@@ -1,0 +1,648 @@
+import {
+  ArrowRight,
+  BadgeCheck,
+  Crown,
+  DollarSign,
+  FileCheck2,
+  Landmark,
+  LockKeyhole,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  UploadCloud
+} from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  adminAction,
+  certifyPartner,
+  getAdminData,
+  getPortalData,
+  submitRescue
+} from "./lib/api";
+import type { AdminData, CertificationResult, IntakeResult, PortalData, RoutingState } from "./types";
+
+type Route = "rescue" | "certify" | "portal" | "admin" | "content";
+
+const routes: Array<{ key: Route; label: string }> = [
+  { key: "rescue", label: "Rescue" },
+  { key: "certify", label: "Certify" },
+  { key: "portal", label: "Portal" },
+  { key: "admin", label: "Admin" },
+  { key: "content", label: "Amazon niches" }
+];
+
+const routeFromHash = (): Route => {
+  const hash = window.location.hash.replace("#", "") as Route;
+  return routes.some((route) => route.key === hash) ? hash : "rescue";
+};
+
+function App() {
+  const [route, setRouteState] = useState<Route>(routeFromHash);
+
+  useEffect(() => {
+    const onHashChange = () => setRouteState(routeFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const setRoute = (next: Route) => {
+    window.location.hash = next;
+    setRouteState(next);
+  };
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <button className="brand-lockup" onClick={() => setRoute("rescue")} type="button">
+          <span className="brand-mark" aria-hidden="true">
+            <Crown size={18} />
+          </span>
+          <span>
+            <strong>Iron Crown Capital</strong>
+            <small>Amazon File Desk</small>
+          </span>
+        </button>
+        <nav aria-label="Primary navigation">
+          {routes.map((item) => (
+            <button
+              className={route === item.key ? "nav-item active" : "nav-item"}
+              key={item.key}
+              onClick={() => setRoute(item.key)}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      <main>
+        {route === "rescue" && <RescueChallenge onCertify={() => setRoute("certify")} />}
+        {route === "certify" && <CertificationFunnel onPortal={() => setRoute("portal")} />}
+        {route === "portal" && <PartnerPortal />}
+        {route === "admin" && <AdminDashboard />}
+        {route === "content" && <NichePages />}
+      </main>
+    </div>
+  );
+}
+
+function RescueChallenge({ onCertify }: { onCertify: () => void }) {
+  const [fileName, setFileName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<IntakeResult | null>(null);
+  const [error, setError] = useState("");
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setResult(null);
+    setLoading(true);
+
+    try {
+      const form = new FormData(event.currentTarget);
+      const response = await submitRescue(form);
+      setResult(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The file could not be submitted.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <section className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">Deal Rescue Challenge</p>
+          <h1>Have an Amazon deal nobody could place? Give it a home.</h1>
+          <p className="hero-subcopy">
+            Upload the statement. If Amazon pays the merchant, the File Desk routes it to a
+            specialist review path built for sellers, Relay carriers, and DSP operators.
+          </p>
+          <div className="trust-row" aria-label="Partner trust signals">
+            <span>10-12% paid on funded</span>
+            <span>Fast clear yes/no</span>
+            <span>Protected commission</span>
+          </div>
+        </div>
+
+        <form className="upload-tool" onSubmit={onSubmit}>
+          <div className="tool-heading">
+            <UploadCloud size={22} />
+            <div>
+              <h2>Drop the file</h2>
+              <p>CSV, PDF, or XLSX bank statement up to 15 MB.</p>
+            </div>
+          </div>
+
+          <label className="file-drop">
+            <input
+              accept=".csv,.pdf,.xlsx,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              name="statement"
+              onChange={(event) => setFileName(event.currentTarget.files?.[0]?.name || "")}
+              required
+              type="file"
+            />
+            <span>{fileName || "Choose bank statement"}</span>
+          </label>
+
+          <div className="form-grid two">
+            <label>
+              Partner email
+              <input name="email" placeholder="you@firm.com" required type="email" />
+            </label>
+            <label>
+              Merchant
+              <input name="merchantName" placeholder="Merchant legal name" required />
+            </label>
+            <label>
+              Full name
+              <input name="fullName" placeholder="Your name" required />
+            </label>
+            <label>
+              Firm
+              <input name="firmName" placeholder="Brokerage or agency" />
+            </label>
+          </div>
+
+          <label>
+            Partner type
+            <select defaultValue="broker_mca" name="referrerType">
+              <option value="broker_mca">MCA broker / ISO</option>
+              <option value="amazon_agency">Amazon agency / consultant</option>
+              <option value="accountant">Accountant / bookkeeper</option>
+            </select>
+          </label>
+
+          <button className="primary-action" disabled={loading} type="submit">
+            {loading ? "Checking file..." : "Run the checker"}
+            <ArrowRight size={18} />
+          </button>
+          {error && <p className="form-error">{error}</p>}
+        </form>
+      </section>
+
+      {result && <CheckerResult result={result} onCertify={onCertify} />}
+      <section className="proof-band">
+        <ProofItem icon={<ShieldCheck />} label="Merchant and commission protected" />
+        <ProofItem icon={<FileCheck2 />} label="Rules-only checker, no hard rejection" />
+        <ProofItem icon={<Landmark />} label="Routes into operator-owned underwriting" />
+      </section>
+    </>
+  );
+}
+
+function CheckerResult({ result, onCertify }: { result: IntakeResult; onCertify: () => void }) {
+  const tone = result.checkerDecision === "likely_fundable" ? "success" : result.checkerDecision === "needs_review" ? "watch" : "soft";
+  const title =
+    result.checkerDecision === "likely_fundable"
+      ? "Likely fundable. This one's worth submitting."
+      : result.checkerDecision === "needs_review"
+        ? "Needs review. Still worth a human look."
+        : "Out of box. Keep the relationship warm.";
+
+  return (
+    <section className={`result-panel ${tone}`} aria-live="polite">
+      <div>
+        <p className="eyebrow">Instant checker</p>
+        <h2>{title}</h2>
+        <p>{result.message}</p>
+        {result.detectedDescriptor && (
+          <p className="mono-line">Detected descriptor: {result.detectedDescriptor}</p>
+        )}
+      </div>
+      <div className="result-actions">
+        <button className="primary-action" onClick={onCertify} type="button">
+          Certify partner
+          <BadgeCheck size={18} />
+        </button>
+        <p>{result.nextAction}</p>
+      </div>
+    </section>
+  );
+}
+
+function CertificationFunnel({ onPortal }: { onPortal: () => void }) {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<CertificationResult | null>(null);
+  const [error, setError] = useState("");
+  const progress = `${Math.min(step, 3) * 33.333}%`;
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      const formData = new FormData(event.currentTarget);
+      const payload = Object.fromEntries(formData.entries());
+      const response = await certifyPartner(payload);
+      setResult(response);
+      setStep(3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Certification signup failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="page-grid">
+      <div className="ceremony">
+        <p className="eyebrow">ICC Certified Amazon Deal Partner</p>
+        <h1>A credential brokers can actually show.</h1>
+        <p>
+          The certification path is short by design: learn the Amazon file rule, confirm the
+          protected-commission terms, sign the ISO agreement, then submit files through the desk.
+        </p>
+        <div className="progress-track">
+          <span style={{ width: progress }} />
+        </div>
+        <div className="badge-preview">
+          <Crown size={38} />
+          <strong>ICC Certified</strong>
+          <span>Amazon Deal Partner</span>
+        </div>
+      </div>
+
+      <div className="workflow-panel">
+        {step === 1 && (
+          <div className="stack">
+            <h2>Rule one</h2>
+            <p className="big-copy">Does Amazon pay them? Send the file.</p>
+            <p>
+              FBA, FBM, Relay, and DSP files often fail generic funding desks because the payment
+              stream is misunderstood. This desk exists for those files.
+            </p>
+            <button className="primary-action" onClick={() => setStep(2)} type="button">
+              Take the quiz
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="stack">
+            <h2>Quick check</h2>
+            <label className="choice">
+              <input name="quiz" type="radio" defaultChecked />
+              If Amazon is the inflow, the file belongs here.
+            </label>
+            <label className="choice">
+              <input name="quiz" type="radio" />
+              Reject every file without scoring it.
+            </label>
+            <button className="primary-action" onClick={() => setStep(3)} type="button">
+              Start signup
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <form className="stack" onSubmit={onSubmit}>
+            <h2>Partner signup</h2>
+            <div className="form-grid two">
+              <label>
+                Full name
+                <input name="fullName" required />
+              </label>
+              <label>
+                Firm
+                <input name="firmName" />
+              </label>
+              <label>
+                Email
+                <input name="email" required type="email" />
+              </label>
+              <label>
+                Verification URL
+                <input name="verificationUrl" placeholder="https://firm.com" />
+              </label>
+            </div>
+            <label>
+              Partner type
+              <select defaultValue="broker_mca" name="referrerType">
+                <option value="broker_mca">MCA broker / ISO</option>
+                <option value="amazon_agency">Amazon agency / consultant</option>
+                <option value="accountant">Accountant / bookkeeper</option>
+              </select>
+            </label>
+            <button className="primary-action" disabled={loading} type="submit">
+              {loading ? "Creating envelope..." : "Create DocuSeal envelope"}
+              <Send size={18} />
+            </button>
+            {error && <p className="form-error">{error}</p>}
+          </form>
+        )}
+
+        {result && (
+          <div className="signed-state">
+            <BadgeCheck size={34} />
+            <h2>Envelope ready</h2>
+            <p>{result.message}</p>
+            <p className="mono-line">Referral token: {result.referralToken}</p>
+            <a className="secondary-action" href={result.signingUrl}>
+              Open DocuSeal stub
+            </a>
+            <button className="primary-action" onClick={onPortal} type="button">
+              View portal
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PartnerPortal() {
+  const [data, setData] = useState<PortalData | null>(null);
+
+  useEffect(() => {
+    void getPortalData().then(setData);
+  }, []);
+
+  if (!data) {
+    return <LoadingPanel label="Opening partner portal" />;
+  }
+
+  const totalOwed = data.commissions.reduce((sum, row) => sum + row.payoutOwed, 0);
+
+  return (
+    <section className="dashboard">
+      <div className="dashboard-hero">
+        <div>
+          <p className="eyebrow">Partner portal</p>
+          <h1>{data.partner.fullName}</h1>
+          <p>{data.partner.firmName || "Certified Amazon Deal Partner"}</p>
+        </div>
+        <div className="metric-strip">
+          <Metric label="Private rank" value={`#${data.partner.rank}`} />
+          <Metric label="Accrued" value={formatMoney(totalOwed)} />
+          <Metric label="Renewal rate" value={`${data.partner.commissionBpsRenewal / 100}%`} />
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
+        <section className="panel">
+          <div className="panel-title">
+            <BadgeCheck size={20} />
+            <h2>Credential</h2>
+          </div>
+          <div className="portal-badge">
+            <Crown size={28} />
+            <strong>ICC Certified Amazon Deal Partner</strong>
+            <span className="mono-line">{data.partner.referralToken}</span>
+          </div>
+        </section>
+
+        <section className="panel wide">
+          <div className="panel-title">
+            <FileCheck2 size={20} />
+            <h2>Submissions</h2>
+          </div>
+          <DataTable
+            columns={["Merchant", "Descriptor", "Decision", "Status"]}
+            rows={data.submissions.map((row) => [
+              row.merchantName,
+              row.detectedDescriptor,
+              decisionLabel(row.checkerDecision),
+              <StatusPill key={row.id} state={row.routingState} />
+            ])}
+          />
+        </section>
+
+        <section className="panel wide">
+          <div className="panel-title">
+            <DollarSign size={20} />
+            <h2>Commission ledger</h2>
+          </div>
+          <DataTable
+            columns={["Funded", "Type", "Payout owed", "State"]}
+            rows={data.commissions.map((row) => [
+              formatMoney(row.fundedAmount),
+              row.isRenewal ? "Renewal" : "New",
+              formatMoney(row.payoutOwed),
+              row.payoutState
+            ])}
+          />
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function AdminDashboard() {
+  const [data, setData] = useState<AdminData | null>(null);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    void getAdminData().then(setData);
+  }, []);
+
+  async function run(action: string, payload: Record<string, unknown>) {
+    const response = await adminAction(action, payload);
+    setNotice(response.message);
+  }
+
+  if (!data) {
+    return <LoadingPanel label="Opening admin dashboard" />;
+  }
+
+  return (
+    <section className="dashboard admin">
+      <div className="dashboard-hero">
+        <div>
+          <p className="eyebrow">Admin path</p>
+          <h1>VA queue and operator actions</h1>
+          <p>Allowlisted Supabase Auth users only in deployment.</p>
+        </div>
+        <LockKeyhole size={42} />
+      </div>
+      {notice && <p className="success-note">{notice}</p>}
+      <div className="dashboard-grid">
+        <section className="panel">
+          <div className="panel-title">
+            <ShieldCheck size={20} />
+            <h2>Manual vetting</h2>
+          </div>
+          {data.pendingPartners.map((partner) => (
+            <div className="action-row" key={partner.id}>
+              <span>
+                <strong>{partner.fullName}</strong>
+                <small>{partner.email}</small>
+              </span>
+              <button onClick={() => run("approve_partner", { partnerId: partner.id })} type="button">
+                Approve
+              </button>
+            </div>
+          ))}
+        </section>
+
+        <section className="panel wide">
+          <div className="panel-title">
+            <Send size={20} />
+            <h2>VA queue</h2>
+          </div>
+          {data.queue.map((submission) => (
+            <div className="queue-row" key={submission.id}>
+              <div>
+                <strong>{submission.merchantName}</strong>
+                <small>
+                  {submission.partnerName} · {submission.detectedDescriptor}
+                </small>
+              </div>
+              <StatusPill state={submission.routingState} />
+              <button onClick={() => run("send_to_underwriting", { submissionId: submission.id })} type="button">
+                Send to underwriting
+              </button>
+              <button
+                onClick={() =>
+                  run("mark_funded", {
+                    submissionId: submission.id,
+                    fundedAmount: 42000,
+                    isRenewal: false
+                  })
+                }
+                type="button"
+              >
+                Mark funded
+              </button>
+            </div>
+          ))}
+        </section>
+
+        <section className="panel wide">
+          <div className="panel-title">
+            <DollarSign size={20} />
+            <h2>Payout review</h2>
+          </div>
+          <DataTable
+            columns={["Partner", "Payout", "State", "Review"]}
+            rows={data.commissions.map((row) => [
+              row.partnerEmail,
+              formatMoney(row.payoutOwed),
+              row.payoutState,
+              row.requiresFirstDealReview ? "First funded deal" : "Standard"
+            ])}
+          />
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function NichePages() {
+  const niches = [
+    {
+      title: "Amazon sellers",
+      copy: "FBA and FBM merchants with Amazon as the dominant inflow.",
+      icon: <Landmark />
+    },
+    {
+      title: "Relay carriers",
+      copy: "Amazon Relay carriers whose cash flow needs a funder that understands the descriptor.",
+      icon: <FileCheck2 />
+    },
+    {
+      title: "DSP operators",
+      copy: "Delivery service partners with Amazon-linked revenue that generic desks misread.",
+      icon: <Sparkles />
+    }
+  ];
+
+  return (
+    <section className="page-grid">
+      <div>
+        <p className="eyebrow">SEO/content seed</p>
+        <h1>Amazon economy files belong in one focused desk.</h1>
+        <p>
+          These pages are intentionally basic in Phase 0-2. The owned content loop expands only
+          after the first funded deal proves the desk.
+        </p>
+      </div>
+      <div className="niche-grid">
+        {niches.map((niche) => (
+          <article className="niche-card" key={niche.title}>
+            {niche.icon}
+            <h2>{niche.title}</h2>
+            <p>{niche.copy}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProofItem({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="proof-item">
+      {icon}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function StatusPill({ state }: { state: RoutingState }) {
+  return <span className={`status-pill ${state}`}>{state.replace("_", " ")}</span>;
+}
+
+function DataTable({ columns, rows }: { columns: string[]; rows: Array<Array<React.ReactNode>> }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column}>{column}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <section className="loading-panel">
+      <span className="loader" />
+      <p>{label}</p>
+    </section>
+  );
+}
+
+function decisionLabel(decision: string) {
+  return decision.replace("_", " ");
+}
+
+function formatMoney(amount: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(amount);
+}
+
+export default App;

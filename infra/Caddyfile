@@ -1,0 +1,9 @@
+{$N8N_HOST} {
+  encode gzip zstd
+  reverse_proxy n8n:5678
+}
+
+{$DOCUSEAL_HOST} {
+  encode gzip zstd
+  reverse_proxy docuseal:3000
+}
