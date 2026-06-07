@@ -4,20 +4,14 @@
 
 Done when:
 
-- VPS stack runs n8n, DocuSeal, Caddy, and Watchtower.
 - Supabase schema is applied and RLS policies exist.
 - Netlify deploy serves the frontend and functions.
-- SES domain passes SPF, DKIM, and DMARC `p=none`.
-- A test transactional email logs or sends with `List-Unsubscribe`.
+- SendGrid domain authentication passes and DMARC starts at `p=none`.
+- A test transactional email logs or sends through SendGrid with `List-Unsubscribe`.
+- DocuSign integration values are present or the e-sign path is visibly stubbed.
+- `infra/` remains undeployed and marked Phase 3-only.
 
 Checks:
-
-```bash
-cd infra
-docker compose ps
-curl -I https://$N8N_HOST/healthz
-curl -I https://$DOCUSEAL_HOST
-```
 
 In Supabase SQL editor:
 
@@ -25,7 +19,7 @@ In Supabase SQL editor:
 select tablename, rowsecurity
 from pg_tables
 where schemaname = 'public'
-  and tablename in ('partners','submissions','commissions','suppression');
+  and tablename in ('partners','submissions','commissions','suppression','rate_limits');
 ```
 
 ## Phase 1
@@ -33,9 +27,9 @@ where schemaname = 'public'
 Done when a stranger can:
 
 - Complete the certification signup.
-- Receive a DocuSeal signing URL.
+- Receive an embedded DocuSign signing URL.
 - Sign the ISO agreement.
-- Become `certified` through the webhook if not pending manual vetting.
+- Become `certified` through the DocuSign Connect webhook if not pending manual vetting.
 - See only their own portal rows.
 
 Generic email accounts should remain `pending_manual_vetting` until a VA approves them.

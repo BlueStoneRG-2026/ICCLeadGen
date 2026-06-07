@@ -4,7 +4,7 @@ import { mockAdminData, mockCertification, mockIntakeResult, mockPortalData } fr
 const functionBase = import.meta.env.VITE_FUNCTION_BASE || "/.netlify/functions";
 const forceLive = import.meta.env.VITE_DEMO_MODE === "false";
 
-function useDemoMode() {
+export function useDemoMode() {
   return !forceLive && !import.meta.env.VITE_SUPABASE_URL;
 }
 

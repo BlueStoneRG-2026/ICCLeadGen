@@ -1,5 +1,6 @@
 -- ICC Amazon File Desk — Phase 0-2 schema
--- Four application tables only: partners, submissions, commissions, suppression.
+-- Four business tables: partners, submissions, commissions, suppression.
+-- One operational table: rate_limits.
 
 BEGIN;
 
@@ -58,9 +59,17 @@ CREATE TABLE IF NOT EXISTS public.suppression (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+  key TEXT PRIMARY KEY,
+  window_started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  hits INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_submissions_partner_routing ON public.submissions(partner_id, routing_state);
 CREATE INDEX IF NOT EXISTS idx_submissions_created ON public.submissions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_commissions_partner_state ON public.commissions(partner_id, payout_state);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_updated ON public.rate_limits(updated_at DESC);
 
 CREATE OR REPLACE FUNCTION public.touch_submission_updated_at()
 RETURNS TRIGGER
@@ -78,10 +87,74 @@ BEFORE UPDATE ON public.submissions
 FOR EACH ROW
 EXECUTE FUNCTION public.touch_submission_updated_at();
 
+CREATE OR REPLACE FUNCTION public.consume_rate_limit(p_key TEXT, p_limit INT, p_window_ms INT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  current_limit public.rate_limits%ROWTYPE;
+  window_interval INTERVAL := (p_window_ms::TEXT || ' milliseconds')::INTERVAL;
+BEGIN
+  INSERT INTO public.rate_limits (key, hits)
+  VALUES (p_key, 0)
+  ON CONFLICT (key) DO NOTHING;
+
+  SELECT *
+  INTO current_limit
+  FROM public.rate_limits
+  WHERE key = p_key
+  FOR UPDATE;
+
+  IF current_limit.window_started_at <= now() - window_interval THEN
+    UPDATE public.rate_limits
+    SET hits = 1,
+        window_started_at = now(),
+        updated_at = now()
+    WHERE key = p_key;
+    RETURN TRUE;
+  END IF;
+
+  IF current_limit.hits >= p_limit THEN
+    UPDATE public.rate_limits
+    SET updated_at = now()
+    WHERE key = p_key;
+    RETURN FALSE;
+  END IF;
+
+  UPDATE public.rate_limits
+  SET hits = hits + 1,
+      updated_at = now()
+  WHERE key = p_key;
+
+  RETURN TRUE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.reject_referral_token_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.referral_token IS DISTINCT FROM OLD.referral_token THEN
+    RAISE EXCEPTION 'referral_token is immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_referral_token_immutable ON public.partners;
+CREATE TRIGGER trg_referral_token_immutable
+BEFORE UPDATE ON public.partners
+FOR EACH ROW
+EXECUTE FUNCTION public.reject_referral_token_change();
+
 ALTER TABLE public.partners ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.suppression ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS p_self ON public.partners;
 DROP POLICY IF EXISTS s_self ON public.submissions;

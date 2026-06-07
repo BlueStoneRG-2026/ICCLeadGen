@@ -44,12 +44,12 @@ export function mockCertification(payload: Record<string, unknown>): Certificati
   return {
     partnerId: "demo-partner-8192",
     partnerStatus: status,
-    signingUrl: "https://docuseal.example.com/s/icc-template-placeholder",
+    signingUrl: "https://docusign.example.com/s/icc-template-placeholder",
     referralToken: "ICC-DEMO-8192",
     message:
       status === "pending_manual_vetting"
         ? "Signup received. A VA must approve the partner before submissions open."
-        : "Signup created. Send the partner to the DocuSeal signing URL."
+        : "Signup created. Send the partner to the DocuSign signing URL."
   };
 }
 

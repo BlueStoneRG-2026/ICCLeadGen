@@ -1,18 +1,22 @@
-interface Bucket {
-  hits: number[];
-}
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-const buckets = new Map<string, Bucket>();
+export async function enforceRateLimit(
+  supabase: SupabaseClient,
+  key: string,
+  limit: number,
+  windowMs: number
+) {
+  const { data, error } = await supabase.rpc("consume_rate_limit", {
+    p_key: key,
+    p_limit: limit,
+    p_window_ms: windowMs
+  });
 
-export function enforceRateLimit(key: string, limit: number, windowMs: number) {
-  const now = Date.now();
-  const bucket = buckets.get(key) || { hits: [] };
-  bucket.hits = bucket.hits.filter((hit) => now - hit < windowMs);
-
-  if (bucket.hits.length >= limit) {
-    throw Object.assign(new Error("Rate limit reached. Try again later."), { statusCode: 429 });
+  if (error) {
+    throw error;
   }
 
-  bucket.hits.push(now);
-  buckets.set(key, bucket);
+  if (!data) {
+    throw Object.assign(new Error("Rate limit reached. Try again later."), { statusCode: 429 });
+  }
 }

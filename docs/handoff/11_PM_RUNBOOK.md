@@ -10,13 +10,13 @@
 ## The prompt sequence
 
 ### P0-1 (Phase 0 — infra)
-> "Set up the infrastructure for the ICC Amazon File Desk per the handoff kit. Produce: a Docker Compose for a Hetzner VPS running n8n + DocuSeal + Watchtower; the exact `05_DATA_MODEL.sql` to run in Supabase (confirm RLS + indexes); a Netlify site skeleton; and the DNS/SES setup steps for SPF/DKIM/DMARC (p=none) with a List-Unsubscribe header. Stop at the Phase 0 'done when' gate and tell me how to verify it."
+> "Set up the Phase 0–2 infrastructure for the ICC Amazon File Desk per the handoff kit. Produce: the exact `05_DATA_MODEL.sql` to run in Supabase (confirm RLS, indexes, immutable referral token trigger, and shared rate limits); a Netlify site skeleton; and the SendGrid domain authentication / DMARC setup steps with a List-Unsubscribe header. Configure DocuSign env placeholders for the ISO template and Connect webhook. Do not deploy VPS/n8n/DocuSeal; that is Phase 3. Stop at the Phase 0 'done when' gate and tell me how to verify it."
 
 ### P0-2 (verify)
-> "Walk me through verifying the Phase 0 gate: a record writing end-to-end and a seed email passing SPF/DKIM/DMARC. Give me the exact commands/checks."
+> "Walk me through verifying the Phase 0 gate: a record writing end-to-end and a seed email passing SendGrid domain authentication / DMARC. Give me the exact commands/checks."
 
 ### P1-1 (Phase 1 — certification + e-sign)
-> "Build Phase 1: the certification funnel pages (landing → static training → short quiz → signup), `cert-signup.ts` (creates a Supabase Auth user + provisional partners row + referral_token, then a DocuSeal envelope from the operator's ISO agreement template, returns the signing URL), and the DocuSeal-signed Edge Function (idempotent on esign_envelope_id, promotes to certified, emails badge + cheat sheet + portal link). Enforce the signup rate limits and the corporate-email-vs-manual-vetting rule from `09_SECURITY_ABUSE.md`."
+> "Build Phase 1: the certification funnel pages (landing -> static training -> short quiz -> signup), `cert-signup.ts` (creates a Supabase Auth user + provisional/pending partners row + referral_token, then a DocuSign envelope from the operator's ISO agreement template and returns an embedded signing URL), and the DocuSign Connect Edge Function (HMAC-verified, idempotent on esign_envelope_id, promotes to certified, emails badge + cheat sheet + portal link). Enforce Supabase-backed signup rate limits and the corporate-email-vs-manual-vetting rule from `09_SECURITY_ABUSE.md`."
 
 ### P1-2 (portal)
 > "Build the partner portal on Supabase Auth + RLS: submissions list with status, commission ledger (new vs renewal, full rate), private rank, referral link, badge/cheat-sheet download. Confirm RLS so a partner sees only their own rows (auth.uid() = partners.id). Stop at the Phase 1 gate."

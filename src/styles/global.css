@@ -657,6 +657,61 @@ td {
   padding: 1rem;
 }
 
+.auth-page {
+  display: grid;
+  min-height: calc(100vh - 72px);
+  padding: clamp(1.5rem, 6vw, 5rem) 1rem;
+  place-items: center;
+}
+
+.auth-panel,
+.error-panel {
+  background: rgba(255, 250, 240, 0.95);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  max-width: 560px;
+  padding: clamp(1.2rem, 4vw, 2rem);
+  width: 100%;
+}
+
+.auth-panel h1,
+.error-panel h2 {
+  color: var(--oxblood);
+}
+
+.auth-panel h1 {
+  font-size: clamp(2.8rem, 6vw, 4.8rem);
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.session-bar {
+  align-items: center;
+  background: rgba(255, 250, 240, 0.78);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  font-size: 0.88rem;
+  gap: 1rem;
+  justify-content: flex-end;
+  min-height: 48px;
+  padding: 0.5rem 4vw;
+}
+
+.session-bar button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--oxblood);
+  min-height: 34px;
+  padding: 0 0.7rem;
+}
+
 .niche-grid {
   display: grid;
   gap: 1rem;
