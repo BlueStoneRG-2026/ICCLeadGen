@@ -72,6 +72,13 @@ export const handler: Handler = async (event) => {
 
     const submission = await fetchSubmission(payload.submissionId);
     const partner = submission.partner;
+    if (!payload.isRenewal) {
+      const noOpMessage = await nonRenewalDuplicateMessage(submission, payload.submissionId);
+      if (noOpMessage) {
+        return jsonResponse(200, { ok: true, message: noOpMessage });
+      }
+    }
+
     const bps = payload.isRenewal ? partner.commission_bps_renewal : partner.commission_bps_new;
     const payoutOwed = Math.round(((payload.fundedAmount * bps) / 10000) * 100) / 100;
     const clawbackEligible = payload.fundedAmount > 10000;
@@ -95,6 +102,12 @@ export const handler: Handler = async (event) => {
       payout_state: "accrued"
     });
     if (insert.error) {
+      if (!payload.isRenewal && insert.error.code === "23505") {
+        return jsonResponse(200, {
+          ok: true,
+          message: "A non-renewal commission already exists for this submission. No duplicate was accrued."
+        });
+      }
       throw insert.error;
     }
 
@@ -130,6 +143,25 @@ export const handler: Handler = async (event) => {
         throw error;
       }
       return (count || 0) === 0;
+    }
+
+    async function nonRenewalDuplicateMessage(submissionRow: any, submissionId: string) {
+      if (submissionRow.routing_state === "funded") {
+        return "This submission is already marked funded. No duplicate commission was accrued.";
+      }
+
+      const { count, error } = await supabase
+        .from("commissions")
+        .select("id", { count: "exact", head: true })
+        .eq("submission_id", submissionId)
+        .eq("is_renewal", false);
+      if (error) {
+        throw error;
+      }
+
+      return (count || 0) > 0
+        ? "A non-renewal commission already exists for this submission. No duplicate was accrued."
+        : "";
     }
   } catch (error) {
     return handleFunctionError(error);
