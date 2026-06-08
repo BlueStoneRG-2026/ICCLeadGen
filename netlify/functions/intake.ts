@@ -4,7 +4,7 @@ import { runRulesOnlyChecker } from "./_shared/checker";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
 import { sendTransactionalEmail, statusEmail } from "./_shared/email";
 import { extractCheckerText, validateSubmissionFile } from "./_shared/file-validation";
-import { jsonResponse, methodNotAllowed } from "./_shared/http";
+import { getClientIp, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { parseMultipart } from "./_shared/multipart";
 import {
   partnerStatusForEmail,
@@ -13,6 +13,7 @@ import {
   ReferrerTypeSchema,
   safeFileName
 } from "./_shared/partner";
+import { enforceRateLimit } from "./_shared/rate-limit";
 
 const IntakeSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
@@ -30,12 +31,16 @@ export const handler: Handler = async (event) => {
   try {
     const { fields, files } = await parseMultipart(event);
     const payload = IntakeSchema.parse(fields);
+    const ip = getClientIp(event.headers);
+    const supabase = supabaseAdmin();
+    await enforceRateLimit(supabase, `intake-ip-hour:${ip}`, 5, 60 * 60 * 1000);
+    await enforceRateLimit(supabase, `intake-ip-day:${ip}`, 10, 24 * 60 * 60 * 1000);
+
     const statement = files.find((file) => file.fieldName === "statement");
     if (!statement) {
       throw Object.assign(new Error("A statement file is required."), { statusCode: 400 });
     }
 
-    const supabase = supabaseAdmin();
     let partner = await findPartner(payload.email);
     if (!partner) {
       partner = await createPartner();
