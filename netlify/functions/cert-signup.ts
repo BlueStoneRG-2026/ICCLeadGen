@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createPartnerAgreementEnvelope } from "./_shared/docuseal";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
 import { sendTransactionalEmail } from "./_shared/email";
-import { getClientIp, jsonResponse, methodNotAllowed } from "./_shared/http";
+import { getClientIp, handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { enforceRateLimit } from "./_shared/rate-limit";
 import { rateLimitPolicies } from "./_shared/abuse-policy";
 import {
@@ -23,6 +23,9 @@ const SignupSchema = z.object({
 });
 
 export const handler: Handler = async (event) => {
+  const cors = handleCorsPreflight(event);
+  if (cors) return cors;
+
   if (event.httpMethod !== "POST") {
     return methodNotAllowed();
   }

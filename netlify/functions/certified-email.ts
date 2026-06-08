@@ -2,7 +2,7 @@ import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { env, handleFunctionError } from "./_shared/env";
 import { sendTransactionalEmail } from "./_shared/email";
-import { jsonResponse, methodNotAllowed } from "./_shared/http";
+import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const PayloadSchema = z.object({
   email: z.string().email(),
@@ -11,6 +11,9 @@ const PayloadSchema = z.object({
 });
 
 export const handler: Handler = async (event) => {
+  const cors = handleCorsPreflight(event);
+  if (cors) return cors;
+
   if (event.httpMethod !== "POST") {
     return methodNotAllowed();
   }

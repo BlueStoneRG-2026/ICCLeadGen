@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { HandlerEvent } from "@netlify/functions";
 import { getBearerToken, jsonResponse } from "./http";
+import { ZodError } from "zod";
 
 export function env(name: string, fallback = "") {
   return process.env[name] || fallback;
@@ -79,7 +80,53 @@ function localAdminBypassAllowed() {
 
 export function handleFunctionError(error: unknown) {
   const err = error as Error & { statusCode?: number };
-  return jsonResponse(err.statusCode || 500, {
-    error: err.message || "Unexpected function error."
+  if (error instanceof ZodError) {
+    return jsonResponse(400, {
+      error: {
+        code: "validation_failed",
+        message: "Request validation failed.",
+        issues: error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message
+        }))
+      }
+    });
+  }
+
+  if (error instanceof SyntaxError) {
+    return jsonResponse(400, {
+      error: {
+        code: "invalid_json",
+        message: "Request body is not valid JSON."
+      }
+    });
+  }
+
+  const statusCode = err.statusCode || 500;
+  if (statusCode >= 500) {
+    console.error("Function error", error);
+    return jsonResponse(statusCode, {
+      error: {
+        code: "internal_error",
+        message: "Unexpected function error."
+      }
+    });
+  }
+
+  return jsonResponse(statusCode, {
+    error: {
+      code: errorCodeForStatus(statusCode),
+      message: err.message || "Request failed."
+    }
   });
+}
+
+function errorCodeForStatus(statusCode: number) {
+  if (statusCode === 401) return "unauthorized";
+  if (statusCode === 403) return "forbidden";
+  if (statusCode === 413) return "payload_too_large";
+  if (statusCode === 415) return "unsupported_media_type";
+  if (statusCode === 422) return "unprocessable_entity";
+  if (statusCode === 429) return "rate_limited";
+  return "request_failed";
 }

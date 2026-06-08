@@ -4,7 +4,7 @@ import { runRulesOnlyChecker } from "./_shared/checker";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
 import { sendTransactionalEmail, statusEmail } from "./_shared/email";
 import { extractCheckerText, validateSubmissionFile } from "./_shared/file-validation";
-import { getClientIp, jsonResponse, methodNotAllowed } from "./_shared/http";
+import { getClientIp, handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { parseMultipart } from "./_shared/multipart";
 import { rateLimitPolicies } from "./_shared/abuse-policy";
 import {
@@ -26,6 +26,9 @@ const IntakeSchema = z.object({
 });
 
 export const handler: Handler = async (event) => {
+  const cors = handleCorsPreflight(event);
+  if (cors) return cors;
+
   if (event.httpMethod !== "POST") {
     return methodNotAllowed();
   }
