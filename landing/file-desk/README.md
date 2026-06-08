@@ -4,4 +4,4 @@ This folder contains the self-contained Iron Crown File Desk acquisition landing
 
 It is intentionally isolated from the Phase 0-2 app: it does not depend on `src/`, Netlify Functions, the app build, or app package scripts.
 
-Deploy `landing/file-desk/` as the static source root for the Iron Crown marketing site. The route content lives in `file-desk/`, so it serves at `/file-desk/` while the referenced image assets live in `images/`. This keeps the File Desk landing page deployable without touching any existing ICC pages.
+When packaging for the Iron Crown marketing site, include only the nested `file-desk/` directory as the deployable route folder. The entire deploy footprint lives under `/file-desk/`, and all landing assets resolve below `/file-desk/` without touching any existing ICC pages or the existing site-level `/images/` folder.
