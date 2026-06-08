@@ -55,12 +55,7 @@ export async function sendTransactionalEmail(email: TransactionalEmail) {
     replyTo,
     subject: email.subject,
     text: email.text,
-    html: renderBrandedEmail({
-      subject: email.subject,
-      preheader: email.preheader || email.text,
-      bodyHtml: email.html,
-      unsubscribeUrl
-    }),
+    html: renderTransactionalEmailHtml(email, unsubscribeUrl),
     headers: {
       "List-Unsubscribe": listUnsubscribe,
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
@@ -117,6 +112,58 @@ export function statusEmail(state: string, merchantName: string) {
       </div>
     `
   };
+}
+
+export function isoReadyEmail(signingUrl: string): Omit<TransactionalEmail, "to"> {
+  return {
+    subject: "ICC Amazon File Desk: ISO agreement ready",
+    preheader: "Your DocuSign signing session is ready inside the File Desk funnel.",
+    text: `Your ICC Amazon File Desk ISO agreement is ready: ${signingUrl}`,
+    html: `
+      <h1>Your ISO agreement is ready.</h1>
+      <p>The ICC Amazon File Desk created your DocuSign envelope. Open the embedded signing session and keep the certification path moving.</p>
+      <p><a class="button" href="${escapeAttribute(signingUrl)}">Open DocuSign</a></p>
+    `
+  };
+}
+
+export function certifiedPartnerEmail(fullName: string, referralToken: string): Omit<TransactionalEmail, "to"> {
+  return {
+    subject: "ICC Certified Amazon Deal Partner",
+    preheader: "Your credential is active and your referral token is ready.",
+    text: `${fullName}, your ICC Certified Amazon Deal Partner credential is active. Referral token: ${referralToken}`,
+    html: `
+      <h1>Your ICC credential is active.</h1>
+      <p>${escapeHtml(fullName)}, you are now an ICC Certified Amazon Deal Partner.</p>
+      <div class="credential-badge">
+        <span>ICC Certified</span>
+        <strong>Amazon Deal Partner</strong>
+        <code>${escapeHtml(referralToken)}</code>
+      </div>
+      <p>Use the File Desk for Amazon sellers, Relay carriers, and DSP operators where the Amazon inflow is the reason the file deserves a fast look.</p>
+    `
+  };
+}
+
+export function unsubscribeConfirmationEmail(): Omit<TransactionalEmail, "to"> {
+  return {
+    subject: "ICC File Desk: unsubscribe confirmed",
+    preheader: "You have been removed from File Desk transactional updates.",
+    text: "Your unsubscribe request has been recorded.",
+    html: `
+      <h1>Unsubscribe confirmed.</h1>
+      <p>Your email has been added to the File Desk suppression list. You will not receive further File Desk status notices at this address unless an operator manually clears the suppression.</p>
+    `
+  };
+}
+
+export function renderTransactionalEmailHtml(email: Omit<TransactionalEmail, "to">, unsubscribeUrl: string) {
+  return renderBrandedEmail({
+    subject: email.subject,
+    preheader: email.preheader || email.text,
+    bodyHtml: email.html,
+    unsubscribeUrl
+  });
 }
 
 function statusCopyFor(state: string, merchantName: string) {
@@ -203,6 +250,41 @@ function renderBrandedEmail({
         font-size: 22px;
         margin-top: 4px;
         text-transform: capitalize;
+      }
+      .credential-badge {
+        background: ${brand.oxblood};
+        border-radius: 8px;
+        color: ${brand.cream};
+        margin: 24px 0;
+        padding: 18px;
+      }
+      .credential-badge span {
+        color: ${brand.forge};
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .credential-badge strong {
+        color: ${brand.cream};
+        display: block;
+        font-family: "Cormorant Garamond", Georgia, serif;
+        font-size: 28px;
+        line-height: 1.05;
+        margin: 4px 0 10px;
+      }
+      .credential-badge code {
+        color: rgba(255,250,240,.82);
+        font-family: "DM Mono", ui-monospace, monospace;
+      }
+      .button {
+        background: ${brand.oxblood};
+        border-radius: 8px;
+        color: ${brand.cream};
+        display: inline-block;
+        font-weight: 700;
+        padding: 13px 18px;
+        text-decoration: none;
       }
     </style>
   </head>

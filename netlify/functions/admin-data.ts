@@ -26,7 +26,7 @@ export const handler: Handler = async (event) => {
     const queue = await supabase
       .from("submissions")
       .select("*, partners(email, full_name)")
-      .in("routing_state", ["received", "va_check", "missing_docs"])
+      .in("routing_state", ["received", "va_check", "missing_docs", "underwriting"])
       .order("created_at", { ascending: true });
     if (queue.error) {
       throw queue.error;
@@ -40,6 +40,16 @@ export const handler: Handler = async (event) => {
     if (commissions.error) {
       throw commissions.error;
     }
+
+    const commissionRows = (commissions.data || []) as any[];
+    const firstCommissionByPartner = new Map<string, string>();
+    [...commissionRows]
+      .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+      .forEach((row) => {
+        if (!firstCommissionByPartner.has(row.partner_id)) {
+          firstCommissionByPartner.set(row.partner_id, String(row.id));
+        }
+      });
 
     return jsonResponse(200, {
       pendingPartners: (pending.data || []).map((row) => ({
@@ -60,7 +70,7 @@ export const handler: Handler = async (event) => {
         routingState: row.routing_state,
         createdAt: row.created_at
       })),
-      commissions: ((commissions.data || []) as any[]).map((row) => ({
+      commissions: commissionRows.map((row) => ({
         id: String(row.id),
         submissionId: row.submission_id,
         partnerEmail: row.partners?.email,
@@ -69,7 +79,8 @@ export const handler: Handler = async (event) => {
         payoutOwed: Number(row.payout_owed),
         clawbackEligible: row.clawback_eligible,
         payoutState: row.payout_state,
-        requiresFirstDealReview: row.payout_state === "accrued",
+        requiresFirstDealReview:
+          row.payout_state === "accrued" && firstCommissionByPartner.get(row.partner_id) === String(row.id),
         createdAt: row.created_at
       }))
     });
