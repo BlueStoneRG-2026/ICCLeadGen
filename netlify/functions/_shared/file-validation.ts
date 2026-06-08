@@ -6,6 +6,7 @@ export type AllowedFileKind = "csv" | "pdf" | "xlsx";
 
 const maxFileBytes = 15 * 1024 * 1024;
 const headerHints = ["date", "description", "amount", "credit", "debit", "deposit", "balance"];
+const xlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 export async function validateSubmissionFile(buffer: Buffer, originalMime = "") {
   if (buffer.byteLength > maxFileBytes) {
@@ -20,9 +21,9 @@ export async function validateSubmissionFile(buffer: Buffer, originalMime = "") 
     return { kind: "pdf" as AllowedFileKind, mime };
   }
 
-  if (mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+  if (mime === xlsxMime || (originalMime === xlsxMime && mime === "application/zip")) {
     validateXlsx(buffer);
-    return { kind: "xlsx" as AllowedFileKind, mime };
+    return { kind: "xlsx" as AllowedFileKind, mime: xlsxMime };
   }
 
   if (mime.includes("csv") || looksLikeCsv(buffer)) {

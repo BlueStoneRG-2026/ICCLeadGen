@@ -1,4 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  verifierRequired,
+  verifyDocusignHmac
+} from "../_shared/webhook-verification.ts";
 
 const jsonHeaders = { "content-type": "application/json" };
 
@@ -14,7 +18,13 @@ Deno.serve(async (req) => {
   const secret = Deno.env.get("DOCUSIGN_CONNECT_HMAC_SECRET") || "";
   const signature = req.headers.get("X-DocuSign-Signature-1") || "";
 
-  if (!secret && !allowUnsignedWebhooks()) {
+  if (
+    !verifierRequired(secret, {
+      allowUnsigned: Deno.env.get("ALLOW_UNSIGNED_WEBHOOKS") || "",
+      functionsLocal: Deno.env.get("SUPABASE_FUNCTIONS_LOCAL") || "",
+      supabaseUrl: Deno.env.get("SUPABASE_URL") || ""
+    })
+  ) {
     return new Response(JSON.stringify({ error: "Missing DocuSign Connect HMAC secret." }), {
       status: 401,
       headers: jsonHeaders
@@ -100,23 +110,6 @@ async function safelyVerifyDocusignHmac(body: string, secret: string, signatureH
   }
 }
 
-function allowUnsignedWebhooks() {
-  if (Deno.env.get("ALLOW_UNSIGNED_WEBHOOKS") !== "true") {
-    return false;
-  }
-
-  return isLocalSupabaseRuntime();
-}
-
-function isLocalSupabaseRuntime() {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-  return (
-    Deno.env.get("SUPABASE_FUNCTIONS_LOCAL") === "true" ||
-    supabaseUrl.includes("127.0.0.1") ||
-    supabaseUrl.includes("localhost")
-  );
-}
-
 function extractEnvelopeStatus(payload: any) {
   return String(
     payload.data?.envelopeSummary?.status ||
@@ -164,37 +157,4 @@ async function sendCertifiedEmail(email: string, fullName: string, referralToken
     },
     body: JSON.stringify({ email, fullName, referralToken })
   });
-}
-
-async function verifyDocusignHmac(body: string, secret: string, signatureHeader: string) {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-  const expected = bytesToBase64(new Uint8Array(digest));
-  return constantTimeEqual(expected, signatureHeader.trim());
-}
-
-function bytesToBase64(bytes: Uint8Array) {
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
-function constantTimeEqual(a: string, b: string) {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let diff = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
-  }
-  return diff === 0;
 }

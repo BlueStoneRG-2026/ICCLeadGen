@@ -6,6 +6,7 @@ import { sendTransactionalEmail, statusEmail } from "./_shared/email";
 import { extractCheckerText, validateSubmissionFile } from "./_shared/file-validation";
 import { getClientIp, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { parseMultipart } from "./_shared/multipart";
+import { rateLimitPolicies } from "./_shared/abuse-policy";
 import {
   partnerStatusForEmail,
   randomPassword,
@@ -14,6 +15,7 @@ import {
   safeFileName
 } from "./_shared/partner";
 import { enforceRateLimit } from "./_shared/rate-limit";
+import { enforceSubmissionCaps } from "./_shared/submission-caps";
 
 const IntakeSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
@@ -33,8 +35,18 @@ export const handler: Handler = async (event) => {
     const payload = IntakeSchema.parse(fields);
     const ip = getClientIp(event.headers);
     const supabase = supabaseAdmin();
-    await enforceRateLimit(supabase, `intake-ip-hour:${ip}`, 5, 60 * 60 * 1000);
-    await enforceRateLimit(supabase, `intake-ip-day:${ip}`, 10, 24 * 60 * 60 * 1000);
+    await enforceRateLimit(
+      supabase,
+      `${rateLimitPolicies.intakeIpHourly.keyPrefix}:${ip}`,
+      rateLimitPolicies.intakeIpHourly.limit,
+      rateLimitPolicies.intakeIpHourly.windowMs
+    );
+    await enforceRateLimit(
+      supabase,
+      `${rateLimitPolicies.intakeIpDaily.keyPrefix}:${ip}`,
+      rateLimitPolicies.intakeIpDaily.limit,
+      rateLimitPolicies.intakeIpDaily.windowMs
+    );
 
     const statement = files.find((file) => file.fieldName === "statement");
     if (!statement) {
@@ -60,7 +72,7 @@ export const handler: Handler = async (event) => {
       throw Object.assign(new Error("This partner account is suspended."), { statusCode: 403 });
     }
 
-    await enforceSubmissionCaps(partner.id, partner.status);
+    await enforceSubmissionCaps(supabase, partner.id, partner.status);
 
     const validation = await validateSubmissionFile(statement.buffer, statement.mimeType);
     const checkerText = extractCheckerText(statement.buffer, validation.kind, statement.fileName);
@@ -175,35 +187,6 @@ export const handler: Handler = async (event) => {
       return data;
     }
 
-    async function enforceSubmissionCaps(partnerId: string, status: string) {
-      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const daily = await supabase
-        .from("submissions")
-        .select("id", { count: "exact", head: true })
-        .eq("partner_id", partnerId)
-        .gte("created_at", dayAgo);
-      if (daily.error) {
-        throw daily.error;
-      }
-      if ((daily.count || 0) >= 3) {
-        throw Object.assign(new Error("New partners can upload at most 3 files per day."), { statusCode: 429 });
-      }
-
-      if (status !== "certified") {
-        const total = await supabase
-          .from("submissions")
-          .select("id", { count: "exact", head: true })
-          .eq("partner_id", partnerId);
-        if (total.error) {
-          throw total.error;
-        }
-        if ((total.count || 0) >= 1) {
-          throw Object.assign(new Error("Provisional partners can submit one file before certification."), {
-            statusCode: 403
-          });
-        }
-      }
-    }
   } catch (error) {
     return handleFunctionError(error);
   }
