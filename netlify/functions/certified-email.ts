@@ -1,7 +1,7 @@
 import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { env, handleFunctionError } from "./_shared/env";
-import { sendTransactionalEmail } from "./_shared/email";
+import { certifiedPartnerEmail, sendTransactionalEmail } from "./_shared/email";
 import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const PayloadSchema = z.object({
@@ -27,9 +27,7 @@ export const handler: Handler = async (event) => {
     const payload = PayloadSchema.parse(JSON.parse(event.body || "{}"));
     await sendTransactionalEmail({
       to: payload.email,
-      subject: "ICC Certified Amazon Deal Partner",
-      text: `${payload.fullName}, your ICC Certified Amazon Deal Partner credential is active. Referral token: ${payload.referralToken}`,
-      html: `<p>${payload.fullName}, your <strong>ICC Certified Amazon Deal Partner</strong> credential is active.</p><p>Referral token: <code>${payload.referralToken}</code></p>`
+      ...certifiedPartnerEmail(payload.fullName, payload.referralToken)
     });
 
     return jsonResponse(200, { ok: true, message: "Certified email sent." });

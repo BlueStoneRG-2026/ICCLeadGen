@@ -632,7 +632,7 @@ td {
 }
 
 .queue-row {
-  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  grid-template-columns: minmax(180px, 1fr) auto auto minmax(170px, 220px) auto;
 }
 
 .action-row small,
@@ -646,6 +646,38 @@ td {
 .queue-row button {
   background: transparent;
   color: var(--oxblood);
+  min-height: 38px;
+}
+
+.queue-row button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.funding-controls {
+  align-items: end;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(92px, 1fr) auto;
+}
+
+.funding-controls label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.funding-controls input[type="number"] {
+  margin-top: 0.25rem;
+  min-height: 38px;
+  padding: 0.5rem 0.6rem;
+}
+
+.toggle-line {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
   min-height: 38px;
 }
 

@@ -20,6 +20,7 @@ import {
   submitRescue,
   useDemoMode
 } from "./lib/api";
+import { applyDemoAdminAction } from "./lib/admin-demo";
 import { getSupabaseBrowserClient, hasSupabaseBrowserConfig, type BrowserSession } from "./lib/supabase";
 import type { AdminData, CertificationResult, IntakeResult, PortalData, RoutingState } from "./types";
 
@@ -470,18 +471,42 @@ function AdminDashboardContent({ accessToken }: { accessToken?: string }) {
   const [data, setData] = useState<AdminData | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [fundingDrafts, setFundingDrafts] = useState<Record<string, { fundedAmount: string; isRenewal: boolean }>>({});
 
   useEffect(() => {
     setData(null);
     setError("");
+    setActionError("");
     void getAdminData(accessToken).then(setData).catch((err) => {
       setError(err instanceof Error ? err.message : "Could not load admin data.");
     });
   }, [accessToken]);
 
   async function run(action: string, payload: Record<string, unknown>) {
-    const response = await adminAction(action, payload, accessToken);
-    setNotice(response.message);
+    setActionError("");
+    try {
+      const response = await adminAction(action, payload, accessToken);
+      setNotice(response.message);
+      if (useDemoMode()) {
+        setData((current) => applyDemoAdminAction(current, action, payload));
+        return;
+      }
+      setData(await getAdminData(accessToken));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Admin action failed.");
+    }
+  }
+
+  function updateFundingDraft(submissionId: string, patch: Partial<{ fundedAmount: string; isRenewal: boolean }>) {
+    setFundingDrafts((current) => ({
+      ...current,
+      [submissionId]: {
+        fundedAmount: current[submissionId]?.fundedAmount || "42000",
+        isRenewal: current[submissionId]?.isRenewal || false,
+        ...patch
+      }
+    }));
   }
 
   if (error) {
@@ -503,6 +528,7 @@ function AdminDashboardContent({ accessToken }: { accessToken?: string }) {
         <LockKeyhole size={42} />
       </div>
       {notice && <p className="success-note">{notice}</p>}
+      {actionError && <p className="form-error">{actionError}</p>}
       <div className="dashboard-grid">
         <section className="panel">
           <div className="panel-title">
@@ -536,15 +562,41 @@ function AdminDashboardContent({ accessToken }: { accessToken?: string }) {
                 </small>
               </div>
               <StatusPill state={submission.routingState} />
-              <button onClick={() => run("send_to_underwriting", { submissionId: submission.id })} type="button">
+              <button
+                disabled={submission.routingState === "underwriting"}
+                onClick={() => run("send_to_underwriting", { submissionId: submission.id })}
+                type="button"
+              >
                 Send to underwriting
               </button>
+              <div className="funding-controls">
+                <label>
+                  Funded
+                  <input
+                    inputMode="decimal"
+                    min="1"
+                    onChange={(event) =>
+                      updateFundingDraft(submission.id, { fundedAmount: event.currentTarget.value })
+                    }
+                    type="number"
+                    value={fundingDrafts[submission.id]?.fundedAmount || "42000"}
+                  />
+                </label>
+                <label className="toggle-line">
+                  <input
+                    checked={fundingDrafts[submission.id]?.isRenewal || false}
+                    onChange={(event) => updateFundingDraft(submission.id, { isRenewal: event.currentTarget.checked })}
+                    type="checkbox"
+                  />
+                  Renewal
+                </label>
+              </div>
               <button
                 onClick={() =>
                   run("mark_funded", {
                     submissionId: submission.id,
-                    fundedAmount: 42000,
-                    isRenewal: false
+                    fundedAmount: Number(fundingDrafts[submission.id]?.fundedAmount || 42000),
+                    isRenewal: fundingDrafts[submission.id]?.isRenewal || false
                   })
                 }
                 type="button"

@@ -2,7 +2,7 @@ import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { createPartnerAgreementEnvelope } from "./_shared/docusign";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
-import { sendTransactionalEmail } from "./_shared/email";
+import { isoReadyEmail, sendTransactionalEmail } from "./_shared/email";
 import { getClientIp, handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { enforceRateLimit } from "./_shared/rate-limit";
 import { rateLimitPolicies } from "./_shared/abuse-policy";
@@ -92,9 +92,7 @@ export const handler: Handler = async (event) => {
 
     await sendTransactionalEmail({
       to: payload.email,
-      subject: "ICC Amazon File Desk: ISO agreement ready",
-      text: `Your DocuSign agreement is ready: ${envelope.signingUrl}`,
-      html: `<h1>Your ISO agreement is ready.</h1><p>The ICC Amazon File Desk created your DocuSign envelope. Open the signing session from the button below.</p><p><a href="${envelope.signingUrl}" style="background:#4b1217;border-radius:8px;color:#fffaf0;display:inline-block;font-weight:700;padding:13px 18px;text-decoration:none;">Open DocuSign</a></p>`
+      ...isoReadyEmail(envelope.signingUrl)
     });
 
     return jsonResponse(200, {
