@@ -11,7 +11,11 @@ export function useDemoMode() {
 async function parseJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(body.error || body.message || `Request failed with ${response.status}`);
+    const message =
+      typeof body.error === "string"
+        ? body.error
+        : body.error?.message || body.message || `Request failed with ${response.status}`;
+    throw new Error(message);
   }
   return body as T;
 }

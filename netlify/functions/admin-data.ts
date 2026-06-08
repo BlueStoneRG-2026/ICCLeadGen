@@ -1,8 +1,15 @@
 import type { Handler } from "@netlify/functions";
 import { handleFunctionError, requireAdmin, supabaseAdmin } from "./_shared/env";
-import { jsonResponse } from "./_shared/http";
+import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 export const handler: Handler = async (event) => {
+  const cors = handleCorsPreflight(event);
+  if (cors) return cors;
+
+  if (event.httpMethod !== "GET") {
+    return methodNotAllowed();
+  }
+
   try {
     await requireAdmin(event);
     const supabase = supabaseAdmin();

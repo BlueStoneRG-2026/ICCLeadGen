@@ -8,6 +8,11 @@ describe("Supabase schema invariants", () => {
   it("keeps partner, submission, and commission RLS scoped to auth.uid()", () => {
     expect(schema).toContain("USING (auth.uid() = id)");
     expect(schema).toContain("USING (auth.uid() = partner_id)");
+    expect(schema).toMatch(/ALTER TABLE public\.partners ENABLE ROW LEVEL SECURITY;/);
+    expect(schema).toMatch(/ALTER TABLE public\.submissions ENABLE ROW LEVEL SECURITY;/);
+    expect(schema).toMatch(/ALTER TABLE public\.commissions ENABLE ROW LEVEL SECURITY;/);
+    expect(schema).toMatch(/CREATE POLICY s_self ON public\.submissions\s+FOR SELECT\s+USING \(auth\.uid\(\) = partner_id\);/);
+    expect(schema).toMatch(/CREATE POLICY c_self ON public\.commissions\s+FOR SELECT\s+USING \(auth\.uid\(\) = partner_id\);/);
   });
 
   it("keeps referral tokens immutable", () => {
@@ -21,4 +26,3 @@ describe("Supabase schema invariants", () => {
     expect(idempotency).toContain("WHERE is_renewal = false");
   });
 });
-

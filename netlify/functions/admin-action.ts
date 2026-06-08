@@ -4,7 +4,7 @@ import { env, handleFunctionError, requireAdmin, supabaseAdmin } from "./_shared
 import { sendTransactionalEmail, statusEmail } from "./_shared/email";
 import { calculateCommission } from "./_shared/commission";
 import { duplicateNonRenewalMessages, isUniqueViolation, nonRenewalDuplicateMessage } from "./_shared/funded-idempotency";
-import { jsonResponse, methodNotAllowed } from "./_shared/http";
+import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const ActionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -24,6 +24,9 @@ const ActionSchema = z.discriminatedUnion("action", [
 ]);
 
 export const handler: Handler = async (event) => {
+  const cors = handleCorsPreflight(event);
+  if (cors) return cors;
+
   if (event.httpMethod !== "POST") {
     return methodNotAllowed();
   }

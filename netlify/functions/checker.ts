@@ -2,7 +2,7 @@ import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { runRulesOnlyChecker } from "./_shared/checker";
 import { handleFunctionError } from "./_shared/env";
-import { jsonResponse, methodNotAllowed } from "./_shared/http";
+import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const CheckerSchema = z.object({
   merchantName: z.string().optional(),
@@ -11,6 +11,9 @@ const CheckerSchema = z.object({
 });
 
 export const handler: Handler = async (event) => {
+  const cors = handleCorsPreflight(event);
+  if (cors) return cors;
+
   if (event.httpMethod !== "POST") {
     return methodNotAllowed();
   }
