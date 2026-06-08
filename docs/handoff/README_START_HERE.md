@@ -10,7 +10,7 @@ It automatically recruits, certifies, signs, tracks, and pays referral partners 
 It does **not** touch underwriting, deal sizing, fraud, stacking, UCC § 9-406 notices, serving, enforcement, or settlement. The operator has run those for nine years and owns them. The engine only **routes a qualified file into the operator's existing system.** (See `03_SCOPE_AND_OWNERSHIP.md`.)
 
 ### The hard rules (never violate — see `12_CONSTRAINTS_GUARDRAILS.md`)
-1. **Owned & independent only.** Nothing may depend on any platform run by people in the MCA/funding industry (no funder/broker directories, no industry SaaS). Commodity/operator-owned infra (Supabase, Netlify, SendGrid, DocuSign, and later VPS/n8n/DocuSeal fallback) is fine — it's switchable and not run by competitors.
+1. **Owned & independent only.** Nothing may depend on any platform run by people in the MCA/funding industry (no funder/broker directories, no industry SaaS). Commodity/operator-owned infra (Supabase, Netlify, SendGrid, DocuSign, and Phase 3 later VPS/n8n/DocuSeal fallback) is fine — it's switchable and not run by competitors.
 2. **Near-free.** Self-hosted/open-source/free-tier first. Any spend must earn out in one deal.
 3. **Hands-off for the operator.** The human layer is a VA, never the operator.
 4. **No automated logged-in social outreach/scraping.** Public data only; email from owned domains; inbound via owned SEO/content/referral loop.

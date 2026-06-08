@@ -1,5 +1,7 @@
 # Deployment
 
+`docs/DEPLOY_CHECKLIST.md` and `docs/DEPLOY_RUNBOOK.md` are the current deploy source of truth. This file is retained as a compact overview.
+
 Phase 0-2 runs on Netlify + Supabase + SendGrid + DocuSign. Do not deploy the VPS/n8n/DocuSeal stack for Phase 0-2.
 
 ## 1. Supabase

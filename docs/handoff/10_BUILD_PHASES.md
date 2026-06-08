@@ -23,4 +23,4 @@ Build **Phase 0–2 only** first. Each phase has a hard "done when" gate.
 - **Done when:** an uploaded statement returns a decision, routes to the VA queue, and a funded mark creates the correct commission.
 
 ## Phase 3+ (AFTER the first funded deal — deferred, do not build yet)
-Sourcing (VA seed list + n8n enrichment), segmented outbound email (Tier B/C; Tier A = VA phone/LinkedIn), high-volume suppression pipeline, VPS/n8n/DocuSeal fallback if needed, the 3-ask viral loop, boards + monthly File Notes, public leaderboard, automated partner-quality scoring, source-decay engine.
+Phase 3 deferred sourcing (VA seed list + n8n enrichment), segmented outbound email (Tier B/C; Tier A = VA phone/LinkedIn), high-volume suppression pipeline, VPS/n8n/DocuSeal fallback if needed, the 3-ask viral loop, boards + monthly File Notes, public leaderboard, automated partner-quality scoring, source-decay engine.

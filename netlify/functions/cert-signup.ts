@@ -1,6 +1,6 @@
 import type { Handler } from "@netlify/functions";
 import { z } from "zod";
-import { createPartnerAgreementEnvelope } from "./_shared/docuseal";
+import { createPartnerAgreementEnvelope } from "./_shared/docusign";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
 import { sendTransactionalEmail } from "./_shared/email";
 import { getClientIp, handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
