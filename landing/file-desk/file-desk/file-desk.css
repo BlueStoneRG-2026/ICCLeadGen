@@ -68,6 +68,8 @@
   --deep: #1b0907;
   --forge: #c86b2d;
   --forge-light: #e18a4c;
+  --cta: #6d1d25;
+  --cta-hover: #4b1217;
   --cream: #fffaf0;
   --bone: #f5ead6;
   --sand: #e5d2b5;
@@ -221,8 +223,8 @@ textarea {
 .header-cta,
 .button--primary {
   color: var(--cream);
-  background: var(--forge);
-  box-shadow: 0 18px 48px rgba(200, 107, 45, 0.28);
+  background: var(--cta);
+  box-shadow: 0 18px 48px rgba(75, 18, 23, 0.28);
 }
 
 .header-cta:hover,
@@ -234,7 +236,7 @@ textarea {
 
 .button--primary:hover,
 .button--primary:focus-visible {
-  background: var(--forge-light);
+  background: var(--cta-hover);
 }
 
 .button--full {
