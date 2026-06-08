@@ -5,6 +5,9 @@ import Papa from "papaparse";
 export type AllowedFileKind = "csv" | "pdf" | "xlsx";
 
 const maxFileBytes = 15 * 1024 * 1024;
+const maxXlsxEntries = 200;
+const maxXlsxExtractedBytes = 4 * 1024 * 1024;
+const maxSingleXlsxXmlBytes = 2 * 1024 * 1024;
 const headerHints = ["date", "description", "amount", "credit", "debit", "deposit", "balance"];
 const xlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -95,9 +98,40 @@ function looksLikeCsv(buffer: Buffer) {
 
 function extractXlsxText(buffer: Buffer) {
   let files: Record<string, Uint8Array>;
+  let entryCount = 0;
+  let extractedBytes = 0;
   try {
-    files = unzipSync(new Uint8Array(buffer));
-  } catch {
+    files = unzipSync(new Uint8Array(buffer), {
+      filter(file) {
+        entryCount += 1;
+        if (entryCount > maxXlsxEntries) {
+          throw Object.assign(new Error("XLSX has too many ZIP entries."), { statusCode: 413 });
+        }
+
+        const wanted =
+          file.name === "[Content_Types].xml" ||
+          file.name === "xl/sharedStrings.xml" ||
+          file.name.startsWith("xl/worksheets/");
+        if (!wanted) {
+          return false;
+        }
+
+        if (file.originalSize > maxSingleXlsxXmlBytes) {
+          throw Object.assign(new Error("XLSX XML part is too large."), { statusCode: 413 });
+        }
+
+        extractedBytes += file.originalSize;
+        if (extractedBytes > maxXlsxExtractedBytes) {
+          throw Object.assign(new Error("XLSX expanded content is too large."), { statusCode: 413 });
+        }
+
+        return true;
+      }
+    });
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode) {
+      throw error;
+    }
     throw Object.assign(new Error("XLSX zip parse failed."), { statusCode: 422 });
   }
 

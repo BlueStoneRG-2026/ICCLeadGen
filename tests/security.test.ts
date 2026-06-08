@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { handleFunctionError } from "../netlify/functions/_shared/env";
-import { handleCorsPreflight, jsonResponse } from "../netlify/functions/_shared/http";
+import { getClientIp, handleCorsPreflight, jsonResponse } from "../netlify/functions/_shared/http";
 import { handleUnsubscribe, parseUnsubscribeEmail } from "../netlify/functions/unsubscribe";
 
 function event(overrides: Record<string, unknown> = {}) {
@@ -52,6 +52,19 @@ describe("function security responses", () => {
     expect(denied?.statusCode).toBe(403);
     vi.unstubAllEnvs();
   });
+
+  it("trusts Netlify's client IP header in production and ignores spoofable fallbacks", () => {
+    vi.stubEnv("NETLIFY_DEV", "false");
+    expect(
+      getClientIp({
+        "x-nf-client-connection-ip": "198.51.100.10",
+        "x-forwarded-for": "10.0.0.1",
+        "client-ip": "10.0.0.2"
+      })
+    ).toBe("198.51.100.10");
+    expect(getClientIp({ "x-forwarded-for": "10.0.0.1", "client-ip": "10.0.0.2" })).toBe("unknown");
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("request validation coverage", () => {
@@ -81,12 +94,24 @@ describe("request validation coverage", () => {
     });
   });
 
+  it("does not let suspended partners restart certification", () => {
+    const source = readFileSync("netlify/functions/cert-signup.ts", "utf8");
+    expect(source).toContain('existing.data?.status === "suspended"');
+    expect(source).toContain("This partner account is suspended.");
+  });
+
   it("keeps CSP and core browser security headers in Netlify config", () => {
     const config = readFileSync("netlify.toml", "utf8");
     expect(config).toContain("Content-Security-Policy");
     expect(config).toContain("frame-ancestors 'none'");
     expect(config).toContain("object-src 'none'");
     expect(config).toContain("X-Frame-Options = \"DENY\"");
+  });
+
+  it("cleans up uploaded storage objects when submission insert fails", () => {
+    const source = readFileSync("netlify/functions/intake.ts", "utf8");
+    expect(source).toContain("await supabase.storage.from(bucket).remove([storagePath])");
+    expect(source.indexOf("remove([storagePath])")).toBeLessThan(source.indexOf("throw insertError"));
   });
 });
 

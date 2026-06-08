@@ -56,6 +56,10 @@ export const handler: Handler = async (event) => {
       throw existing.error;
     }
 
+    if (existing.data?.status === "suspended") {
+      throw Object.assign(new Error("This partner account is suspended."), { statusCode: 403 });
+    }
+
     const status = existing.data?.status || partnerStatusForEmail(payload.email);
     const token = existing.data?.referral_token || referralToken(payload.firmName);
     const userId = existing.data?.id || (await createAuthUser(payload.email, payload.fullName, payload.firmName));

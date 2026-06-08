@@ -7,11 +7,19 @@ import {
 const jsonHeaders = { "content-type": "application/json" };
 
 Deno.serve(async (req) => {
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed." }), {
-      status: 405,
-      headers: jsonHeaders
+  try {
+    return await handleRequest(req);
+  } catch (error) {
+    console.error("DocuSign webhook unexpected error.", safeLogError(error));
+    return jsonResponse((error as { statusCode?: number })?.statusCode || 500, {
+      error: (error as { statusCode?: number })?.statusCode === 400 ? "Invalid JSON payload." : "Unexpected webhook error."
     });
+  }
+});
+
+async function handleRequest(req: Request) {
+  if (req.method !== "POST") {
+    return jsonResponse(405, { error: "Method not allowed." });
   }
 
   const bodyText = await req.text();
@@ -25,33 +33,24 @@ Deno.serve(async (req) => {
       supabaseUrl: Deno.env.get("SUPABASE_URL") || ""
     })
   ) {
-    return new Response(JSON.stringify({ error: "Missing DocuSign Connect HMAC secret." }), {
-      status: 401,
-      headers: jsonHeaders
-    });
+    return jsonResponse(401, { error: "Missing DocuSign Connect HMAC secret." });
   }
 
   if (secret && (!signature || !(await safelyVerifyDocusignHmac(bodyText, secret, signature)))) {
-    return new Response(JSON.stringify({ error: "Invalid DocuSign signature." }), {
-      status: 401,
-      headers: jsonHeaders
-    });
+    return jsonResponse(401, { error: "Invalid DocuSign signature." });
   }
 
-  const payload = JSON.parse(bodyText);
+  const payload = parseJson(bodyText);
   const status = extractEnvelopeStatus(payload);
   if (status !== "completed") {
-    return new Response(JSON.stringify({ ok: true, ignored: true, status }), { headers: jsonHeaders });
+    return jsonResponse(200, { ok: true, ignored: true, status });
   }
 
   const envelopeId = extractEnvelopeId(payload);
   const partnerId = extractCustomField(payload, "partner_id");
 
   if (!envelopeId || !partnerId) {
-    return new Response(JSON.stringify({ error: "Missing envelope ID or partner custom field." }), {
-      status: 422,
-      headers: jsonHeaders
-    });
+    return jsonResponse(422, { error: "Missing envelope ID or partner custom field." });
   }
 
   const supabase = createClient(
@@ -67,15 +66,18 @@ Deno.serve(async (req) => {
     .single();
 
   if (partnerResult.error) {
-    return new Response(JSON.stringify({ error: partnerResult.error.message }), {
-      status: 500,
-      headers: jsonHeaders
-    });
+    console.error("DocuSign partner lookup failed.", safeLogError(partnerResult.error));
+    return jsonResponse(500, { error: "Partner lookup failed." });
   }
 
   const partner = partnerResult.data;
   if (partner.status === "certified" && partner.esign_envelope_id === envelopeId) {
-    return new Response(JSON.stringify({ ok: true, idempotent: true }), { headers: jsonHeaders });
+    return jsonResponse(200, { ok: true, idempotent: true });
+  }
+
+  if (partner.status === "suspended") {
+    console.warn("DocuSign completion ignored for suspended partner.", { partnerId: partner.id });
+    return jsonResponse(200, { ok: true, ignored: true, status: "suspended" });
   }
 
   const nextStatus = partner.status === "pending_manual_vetting" ? "pending_manual_vetting" : "certified";
@@ -88,18 +90,16 @@ Deno.serve(async (req) => {
     .eq("id", partner.id);
 
   if (update.error) {
-    return new Response(JSON.stringify({ error: update.error.message }), {
-      status: 500,
-      headers: jsonHeaders
-    });
+    console.error("DocuSign partner update failed.", safeLogError(update.error));
+    return jsonResponse(500, { error: "Partner update failed." });
   }
 
   if (nextStatus === "certified") {
     await sendCertifiedEmail(partner.email, partner.full_name, partner.referral_token);
   }
 
-  return new Response(JSON.stringify({ ok: true, status: nextStatus }), { headers: jsonHeaders });
-});
+  return jsonResponse(200, { ok: true, status: nextStatus });
+}
 
 async function safelyVerifyDocusignHmac(body: string, secret: string, signatureHeader: string) {
   try {
@@ -149,12 +149,39 @@ async function sendCertifiedEmail(email: string, fullName: string, referralToken
     return;
   }
 
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-internal-secret": Deno.env.get("INTERNAL_WEBHOOK_SECRET") || ""
-    },
-    body: JSON.stringify({ email, fullName, referralToken })
-  });
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-secret": Deno.env.get("INTERNAL_WEBHOOK_SECRET") || ""
+      },
+      body: JSON.stringify({ email, fullName, referralToken })
+    });
+    if (!response.ok) {
+      console.warn("Certified email webhook returned non-OK.", { status: response.status });
+    }
+  } catch (error) {
+    console.warn("Certified email webhook failed.", safeLogError(error));
+  }
+}
+
+function parseJson(bodyText: string) {
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    throw Object.assign(new Error("Invalid JSON payload."), { statusCode: 400 });
+  }
+}
+
+function jsonResponse(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+}
+
+function safeLogError(error: unknown) {
+  const err = error as { code?: string; name?: string; statusCode?: number };
+  return {
+    code: err?.code || err?.name || "unknown",
+    statusCode: err?.statusCode || 500
+  };
 }
