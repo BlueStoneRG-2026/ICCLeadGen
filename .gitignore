@@ -1,6 +1,7 @@
 node_modules
 dist
 .netlify
+supabase/.temp
 .env
 .env.local
 .DS_Store

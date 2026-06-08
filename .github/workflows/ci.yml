@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    name: Build, test, and audit
+    runs-on: ubuntu-latest
+    env:
+      VITE_DEMO_MODE: "true"
+      VITE_SUPABASE_URL: "http://127.0.0.1:54321"
+      VITE_SUPABASE_ANON_KEY: "test-anon-key"
+      VITE_FUNCTION_BASE: "/.netlify/functions"
+      SUPABASE_URL: "http://127.0.0.1:54321"
+      SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key"
+      SUPABASE_ANON_KEY: "test-anon-key"
+      SENDGRID_API_KEY: ""
+      DOCUSIGN_CONNECT_HMAC_SECRET: "test-docusign-secret"
+      SENDGRID_EVENT_PUBLIC_KEY: "test-sendgrid-public-key"
+      ADMIN_EMAILS: "operator@example.com,va@example.com"
+      UNDERWRITING_INTAKE_EMAIL: "underwriting@example.com"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Audit
+        run: npm audit --audit-level=moderate

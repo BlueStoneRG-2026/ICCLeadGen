@@ -2,6 +2,8 @@ import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { env, handleFunctionError, requireAdmin, supabaseAdmin } from "./_shared/env";
 import { sendTransactionalEmail, statusEmail } from "./_shared/email";
+import { calculateCommission } from "./_shared/commission";
+import { duplicateNonRenewalMessages, isUniqueViolation, nonRenewalDuplicateMessage } from "./_shared/funded-idempotency";
 import { jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const ActionSchema = z.discriminatedUnion("action", [
@@ -73,15 +75,18 @@ export const handler: Handler = async (event) => {
     const submission = await fetchSubmission(payload.submissionId);
     const partner = submission.partner;
     if (!payload.isRenewal) {
-      const noOpMessage = await nonRenewalDuplicateMessage(submission, payload.submissionId);
+      const noOpMessage = await nonRenewalDuplicateMessage(supabase, submission, payload.submissionId);
       if (noOpMessage) {
         return jsonResponse(200, { ok: true, message: noOpMessage });
       }
     }
 
-    const bps = payload.isRenewal ? partner.commission_bps_renewal : partner.commission_bps_new;
-    const payoutOwed = Math.round(((payload.fundedAmount * bps) / 10000) * 100) / 100;
-    const clawbackEligible = payload.fundedAmount > 10000;
+    const { bps, payoutOwed, clawbackEligible } = calculateCommission({
+      fundedAmount: payload.fundedAmount,
+      commissionBpsNew: partner.commission_bps_new,
+      commissionBpsRenewal: partner.commission_bps_renewal,
+      isRenewal: payload.isRenewal
+    });
     const firstDeal = await isFirstFundedDeal(partner.id);
 
     const update = await supabase
@@ -102,10 +107,10 @@ export const handler: Handler = async (event) => {
       payout_state: "accrued"
     });
     if (insert.error) {
-      if (!payload.isRenewal && insert.error.code === "23505") {
+      if (!payload.isRenewal && isUniqueViolation(insert.error)) {
         return jsonResponse(200, {
           ok: true,
-          message: "A non-renewal commission already exists for this submission. No duplicate was accrued."
+          message: duplicateNonRenewalMessages.commissionExists
         });
       }
       throw insert.error;
@@ -145,24 +150,6 @@ export const handler: Handler = async (event) => {
       return (count || 0) === 0;
     }
 
-    async function nonRenewalDuplicateMessage(submissionRow: any, submissionId: string) {
-      if (submissionRow.routing_state === "funded") {
-        return "This submission is already marked funded. No duplicate commission was accrued.";
-      }
-
-      const { count, error } = await supabase
-        .from("commissions")
-        .select("id", { count: "exact", head: true })
-        .eq("submission_id", submissionId)
-        .eq("is_renewal", false);
-      if (error) {
-        throw error;
-      }
-
-      return (count || 0) > 0
-        ? "A non-renewal commission already exists for this submission. No duplicate was accrued."
-        : "";
-    }
   } catch (error) {
     return handleFunctionError(error);
   }

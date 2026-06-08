@@ -5,6 +5,7 @@ import { handleFunctionError, supabaseAdmin } from "./_shared/env";
 import { sendTransactionalEmail } from "./_shared/email";
 import { getClientIp, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { enforceRateLimit } from "./_shared/rate-limit";
+import { rateLimitPolicies } from "./_shared/abuse-policy";
 import {
   emailDomain,
   partnerStatusForEmail,
@@ -30,8 +31,18 @@ export const handler: Handler = async (event) => {
     const payload = SignupSchema.parse(JSON.parse(event.body || "{}"));
     const ip = getClientIp(event.headers);
     const supabase = supabaseAdmin();
-    await enforceRateLimit(supabase, `cert-ip:${ip}`, 1, 60 * 60 * 1000);
-    await enforceRateLimit(supabase, `cert-domain:${emailDomain(payload.email)}`, 1, 24 * 60 * 60 * 1000);
+    await enforceRateLimit(
+      supabase,
+      `${rateLimitPolicies.certSignupIp.keyPrefix}:${ip}`,
+      rateLimitPolicies.certSignupIp.limit,
+      rateLimitPolicies.certSignupIp.windowMs
+    );
+    await enforceRateLimit(
+      supabase,
+      `${rateLimitPolicies.certSignupDomain.keyPrefix}:${emailDomain(payload.email)}`,
+      rateLimitPolicies.certSignupDomain.limit,
+      rateLimitPolicies.certSignupDomain.windowMs
+    );
     const existing = await supabase
       .from("partners")
       .select("*")
