@@ -548,6 +548,24 @@ function AdminDashboardContent({ accessToken }: { accessToken?: string }) {
           ))}
         </section>
 
+        <section className="panel">
+          <div className="panel-title">
+            <BadgeCheck size={20} />
+            <h2>Certified emails</h2>
+          </div>
+          {data.certifiedPartners.map((partner) => (
+            <div className="action-row" key={partner.id}>
+              <span>
+                <strong>{partner.fullName}</strong>
+                <small>{partner.email}</small>
+              </span>
+              <button onClick={() => run("resend_certified_email", { partnerId: partner.id })} type="button">
+                Resend
+              </button>
+            </div>
+          ))}
+        </section>
+
         <section className="panel wide">
           <div className="panel-title">
             <Send size={20} />

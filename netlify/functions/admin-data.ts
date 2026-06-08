@@ -23,6 +23,16 @@ export const handler: Handler = async (event) => {
       throw pending.error;
     }
 
+    const certified = await supabase
+      .from("partners")
+      .select("id,email,full_name,firm_name,status,referral_token,created_at")
+      .eq("status", "certified")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (certified.error) {
+      throw certified.error;
+    }
+
     const queue = await supabase
       .from("submissions")
       .select("*, partners(email, full_name)")
@@ -58,6 +68,15 @@ export const handler: Handler = async (event) => {
         fullName: row.full_name,
         firmName: row.firm_name,
         status: row.status,
+        createdAt: row.created_at
+      })),
+      certifiedPartners: (certified.data || []).map((row) => ({
+        id: row.id,
+        email: row.email,
+        fullName: row.full_name,
+        firmName: row.firm_name,
+        status: row.status,
+        referralToken: row.referral_token,
         createdAt: row.created_at
       })),
       queue: ((queue.data || []) as any[]).map((row) => ({

@@ -106,6 +106,17 @@ export const mockAdminData: AdminData = {
       createdAt: "2026-06-07T13:22:00Z"
     }
   ],
+  certifiedPartners: [
+    {
+      id: "partner_certified",
+      email: "avery@stonewc.com",
+      fullName: "Avery Stone",
+      firmName: "Stone Working Capital",
+      status: "certified",
+      referralToken: "ICC-STONE-42A9",
+      createdAt: "2026-06-01T12:30:00Z"
+    }
+  ],
   queue: [
     {
       id: "sub_002",

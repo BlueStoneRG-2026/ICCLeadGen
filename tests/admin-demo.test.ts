@@ -14,6 +14,17 @@ const baseData: AdminData = {
       createdAt: "2026-06-01T00:00:00Z"
     }
   ],
+  certifiedPartners: [
+    {
+      id: "certified-1",
+      email: "certified@agency.test",
+      fullName: "Certified Partner",
+      firmName: "Certified Desk",
+      status: "certified",
+      referralToken: "ICC-CERT-1",
+      createdAt: "2026-06-01T00:00:00Z"
+    }
+  ],
   queue: [
     {
       id: "sub-first",
@@ -97,6 +108,12 @@ describe("demo admin daily loop", () => {
       requiresFirstDealReview: false
     });
   });
+
+  it("leaves demo data intact after resending a certified email", () => {
+    const next = applyDemoAdminAction(baseData, "resend_certified_email", { partnerId: "certified-1" });
+    expect(next?.certifiedPartners).toEqual(baseData.certifiedPartners);
+    expect(next?.pendingPartners).toEqual(baseData.pendingPartners);
+  });
 });
 
 describe("live admin endpoint guardrails", () => {
@@ -108,5 +125,15 @@ describe("live admin endpoint guardrails", () => {
     expect(actionSource).toContain("await requireAdmin(event)");
     expect(dataSource).toContain("\"underwriting\"");
     expect(dataSource).toContain("firstCommissionByPartner");
+  });
+
+  it("keeps certified email resend allowlist-gated and branded", () => {
+    const dataSource = readFileSync("netlify/functions/admin-data.ts", "utf8");
+    const actionSource = readFileSync("netlify/functions/admin-action.ts", "utf8");
+
+    expect(dataSource).toContain("certifiedPartners");
+    expect(actionSource).toContain('z.literal("resend_certified_email")');
+    expect(actionSource).toContain("certifiedPartnerEmail");
+    expect(actionSource).toContain('data.status !== "certified"');
   });
 });
