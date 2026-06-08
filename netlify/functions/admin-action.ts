@@ -1,7 +1,7 @@
 import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { env, handleFunctionError, requireAdmin, supabaseAdmin } from "./_shared/env";
-import { sendTransactionalEmail, statusEmail } from "./_shared/email";
+import { certifiedPartnerEmail, sendTransactionalEmail, statusEmail } from "./_shared/email";
 import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const ActionSchema = z.discriminatedUnion("action", [
@@ -12,6 +12,10 @@ const ActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("send_to_underwriting"),
     submissionId: z.string().uuid()
+  }),
+  z.object({
+    action: z.literal("resend_certified_email"),
+    partnerId: z.string().uuid()
   }),
   z.object({
     action: z.literal("mark_funded"),
@@ -73,6 +77,15 @@ export const handler: Handler = async (event) => {
       });
     }
 
+    if (payload.action === "resend_certified_email") {
+      const partner = await fetchCertifiedPartner(payload.partnerId);
+      await sendTransactionalEmail({
+        to: partner.email,
+        ...certifiedPartnerEmail(partner.full_name, partner.referral_token)
+      });
+      return jsonResponse(200, { ok: true, message: "Certified partner email re-sent." });
+    }
+
     const submission = await fetchSubmission(payload.submissionId);
     const partner = submission.partner;
     const funding = await supabase.rpc("mark_submission_funded", {
@@ -115,6 +128,23 @@ export const handler: Handler = async (event) => {
         ...data,
         partner: (data as any).partners
       } as any;
+    }
+
+    async function fetchCertifiedPartner(partnerId: string) {
+      const { data, error } = await supabase
+        .from("partners")
+        .select("email,full_name,referral_token,status")
+        .eq("id", partnerId)
+        .single();
+      if (error) {
+        throw error;
+      }
+      if (data.status !== "certified") {
+        throw Object.assign(new Error("Certified email can only be re-sent to certified partners."), {
+          statusCode: 422
+        });
+      }
+      return data;
     }
 
   } catch (error) {

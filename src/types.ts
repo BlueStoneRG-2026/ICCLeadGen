@@ -77,6 +77,15 @@ export interface AdminData {
     status: PartnerStatus;
     createdAt: string;
   }>;
+  certifiedPartners: Array<{
+    id: string;
+    email: string;
+    fullName: string;
+    firmName?: string;
+    status: PartnerStatus;
+    referralToken: string;
+    createdAt: string;
+  }>;
   queue: Array<SubmissionRow & { partnerEmail: string; partnerName: string }>;
   commissions: Array<CommissionRow & { partnerEmail: string; requiresFirstDealReview: boolean }>;
 }

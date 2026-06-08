@@ -185,9 +185,9 @@ References:
 
 Current coverage confirms the expected `auth.uid()` RLS policies exist for partners, submissions, and commissions. It does not yet run a Docker-backed Supabase local test where partner A attempts to read partner B with a real anon client and JWT.
 
-Fix:
+Status:
 
-Add a follow-up CI job that boots Supabase local and executes true cross-partner read-denial tests before the final production go.
+Closed in follow-up: CI now boots Supabase local and runs `scripts/rls-cross-partner-test.mjs`, which fails if partner A can read partner B rows through an anon client plus JWT.
 
 ### M2. SendGrid and DocuSign calls do not have a durable outbox or explicit retry policy
 
@@ -201,9 +201,9 @@ References:
 
 Transactional emails after intake are safe-wrapped, and DocuSign Connect processing is sanitized. However, SendGrid SDK sends and DocuSign API calls still do not have a durable outbox, explicit timeout wrapper, or retry queue.
 
-Fix:
+Status:
 
-For Phase 0-2 this can be acceptable with admin visibility, but production reliability would be stronger with an `outbox_events` table and a retry worker in a later PR.
+Accepted/deferred to Phase 2.5: current sends are safe-wrapped around durable state writes, and a durable `outbox_events` table should wait until real send volume proves the retry shape.
 
 ### M3. DocuSign Connect certified-email follow-up can be missed
 
@@ -216,9 +216,9 @@ References:
 
 The DocuSign Connect handler no longer fails the webhook if the Netlify certified-email function is unavailable. That avoids duplicate provider retries, but it also means the certified email could be skipped without a durable retry.
 
-Fix:
+Status:
 
-Either accept this for Phase 0-2 and monitor logs, or pair it with the outbox recommendation above.
+Accepted/deferred to Phase 2.5: the new admin resend-certified-email action gives the VA a manual recovery path now; automatic retry belongs with the later durable outbox.
 
 ### M4. Landing page contrast is not perfect yet
 
@@ -269,9 +269,9 @@ References:
 
 The schema supports accrued/authorized/paid payout states and first-funded manual review flagging, but the current admin loop focuses on accrual visibility, not payout authorization and paid marking.
 
-Fix:
+Status:
 
-Keep payout ops manual for Phase 0-2, or add a small payout-state admin action after the intake and certification flows are production proven.
+Accepted/deferred to Phase 2.5: payout authorization stays manual until the first real funded files prove the ops cadence and audit trail requirements.
 
 ## Low Left For Review Or Decision
 
@@ -302,9 +302,9 @@ References:
 
 Suspended partners are blocked now. Existing non-suspended partners can still initiate another agreement envelope, which could create envelope noise but is not a security bypass.
 
-Fix:
+Status:
 
-Add a reuse/latest-envelope guard later if DocuSign volume becomes noisy.
+Accepted/deferred to Phase 3: extra envelope creation is low-risk at launch, and volume/noise should be measured before adding reuse complexity.
 
 ### L3. Portal rank uses service-role aggregate data server-side
 
@@ -317,9 +317,9 @@ References:
 
 The portal rank endpoint computes rank server-side by reading all commissions with the service role and returns only the current partner's rank and total. It does not expose other partners' raw commission rows, but it is a business side-channel by design.
 
-Fix:
+Status:
 
-Confirm whether showing partner rank belongs in Phase 0-2, or remove it until leaderboard-style features are explicitly in scope.
+Accepted/deferred to Phase 3: private rank remains a non-public motivational signal for now; public leaderboard mechanics remain out of scope until Phase 3.
 
 ## Test Coverage Summary
 

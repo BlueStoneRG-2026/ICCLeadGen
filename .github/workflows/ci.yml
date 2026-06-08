@@ -44,3 +44,63 @@ jobs:
 
       - name: Audit
         run: npm audit --audit-level=moderate
+
+  rls-integration:
+    name: Supabase RLS integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.105.0
+
+      - name: Start Supabase local
+        run: supabase start
+
+      - name: Reset local database
+        run: supabase db reset
+
+      - name: Export Supabase local environment
+        run: |
+          supabase status -o env > /tmp/supabase-local.env
+          node <<'NODE' >> "$GITHUB_ENV"
+          const fs = require("node:fs");
+          const raw = fs.readFileSync("/tmp/supabase-local.env", "utf8");
+          const env = {};
+          for (const line of raw.split(/\r?\n/)) {
+            const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+            if (match) {
+              env[match[1]] = match[2].replace(/^"|"$/g, "");
+            }
+          }
+          const values = {
+            SUPABASE_URL: env.API_URL || env.SUPABASE_URL || "http://127.0.0.1:54321",
+            SUPABASE_ANON_KEY: env.ANON_KEY || env.SUPABASE_ANON_KEY,
+            SUPABASE_SERVICE_ROLE_KEY: env.SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY
+          };
+          for (const [key, value] of Object.entries(values)) {
+            if (!value) {
+              throw new Error(`Missing ${key} from Supabase local status output.`);
+            }
+            console.log(`${key}=${value}`);
+          }
+          NODE
+
+      - name: Cross-partner RLS test
+        run: npm run test:rls
+
+      - name: Stop Supabase local
+        if: always()
+        run: supabase stop --no-backup
