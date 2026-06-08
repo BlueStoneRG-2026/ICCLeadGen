@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createHmac, generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
@@ -52,3 +53,18 @@ describe("SendGrid Event Webhook verifier", () => {
   });
 });
 
+describe("Edge webhook handler hardening", () => {
+  it("sanitizes provider/database errors and handles invalid JSON explicitly", () => {
+    const sendgrid = readFileSync("supabase/functions/sendgrid-events/index.ts", "utf8");
+    const docusign = readFileSync("supabase/functions/docusign-connect/index.ts", "utf8");
+
+    [sendgrid, docusign].forEach((source) => {
+      expect(source).toContain("parseJson");
+      expect(source).toContain("Invalid JSON payload.");
+      expect(source).toContain("safeLogError");
+      expect(source).not.toMatch(/JSON\.stringify\(\{ error: [a-zA-Z0-9_.]+\.message \}\)/);
+    });
+    expect(docusign).toContain('partner.status === "suspended"');
+    expect(docusign).toContain('status: "suspended"');
+  });
+});

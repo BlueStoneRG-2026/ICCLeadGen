@@ -17,6 +17,28 @@ function xlsx() {
   );
 }
 
+function xlsxWithEntries(count: number) {
+  return Buffer.from(
+    zipSync(
+      Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          `xl/worksheets/sheet${index}.xml`,
+          strToU8("<worksheet><sheetData><row><c><v>Date</v></c></row></sheetData></worksheet>")
+        ]).concat([["[Content_Types].xml", strToU8("<Types></Types>")]])
+      )
+    )
+  );
+}
+
+function xlsxWithLargeXml() {
+  return Buffer.from(
+    zipSync({
+      "[Content_Types].xml": strToU8("<Types></Types>"),
+      "xl/worksheets/sheet1.xml": strToU8(`<worksheet>${"A".repeat(2 * 1024 * 1024 + 1)}</worksheet>`)
+    })
+  );
+}
+
 describe("submission file validation", () => {
   it("accepts CSV bank-statement-like exports", async () => {
     await expect(
@@ -46,6 +68,22 @@ describe("submission file validation", () => {
     });
   });
 
+  it("rejects XLSX ZIPs with too many entries before extracting everything", async () => {
+    await expect(
+      validateSubmissionFile(xlsxWithEntries(201), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ).rejects.toMatchObject({
+      statusCode: 413
+    });
+  });
+
+  it("rejects XLSX ZIPs whose expanded XML parts are too large", async () => {
+    await expect(
+      validateSubmissionFile(xlsxWithLargeXml(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ).rejects.toMatchObject({
+      statusCode: 413
+    });
+  });
+
   it("rejects active-content PDFs", async () => {
     await expect(validateSubmissionFile(pdf("/OpenAction /JavaScript"), "application/pdf")).rejects.toMatchObject({
       statusCode: 422
@@ -64,4 +102,3 @@ describe("submission file validation", () => {
     });
   });
 });
-

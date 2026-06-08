@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 const schema = readFileSync("supabase/migrations/0001_phase_0_2_schema.sql", "utf8");
 const idempotency = readFileSync("supabase/migrations/0002_commission_idempotency.sql", "utf8");
+const atomicFunding = readFileSync("supabase/migrations/0003_atomic_funding_and_rpc_grants.sql", "utf8");
+const schemaEntrypoint = readFileSync("supabase/schema.sql", "utf8");
 
 describe("Supabase schema invariants", () => {
   it("keeps partner, submission, and commission RLS scoped to auth.uid()", () => {
@@ -24,5 +26,21 @@ describe("Supabase schema invariants", () => {
     expect(idempotency).toContain("CREATE UNIQUE INDEX IF NOT EXISTS idx_commissions_one_non_renewal_per_submission");
     expect(idempotency).toContain("ON public.commissions(submission_id)");
     expect(idempotency).toContain("WHERE is_renewal = false");
+  });
+
+  it("keeps funding state and commission accrual in one locked database transaction", () => {
+    expect(atomicFunding).toContain("CREATE OR REPLACE FUNCTION public.mark_submission_funded");
+    expect(atomicFunding).toContain("FOR UPDATE");
+    expect(atomicFunding).toContain("INSERT INTO public.commissions");
+    expect(atomicFunding).toContain("UPDATE public.submissions");
+    expect(atomicFunding).toContain("WHEN unique_violation");
+    expect(atomicFunding).toContain("REVOKE ALL ON FUNCTION public.mark_submission_funded(UUID, NUMERIC, BOOLEAN) FROM PUBLIC, anon, authenticated");
+    expect(atomicFunding).toContain("GRANT EXECUTE ON FUNCTION public.mark_submission_funded(UUID, NUMERIC, BOOLEAN) TO service_role");
+  });
+
+  it("locks shared RPCs down to service role and keeps the schema entrypoint complete", () => {
+    expect(atomicFunding).toContain("REVOKE ALL ON FUNCTION public.consume_rate_limit(TEXT, INT, INT) FROM PUBLIC, anon, authenticated");
+    expect(atomicFunding).toContain("GRANT EXECUTE ON FUNCTION public.consume_rate_limit(TEXT, INT, INT) TO service_role");
+    expect(schemaEntrypoint).toContain("0003_atomic_funding_and_rpc_grants.sql");
   });
 });

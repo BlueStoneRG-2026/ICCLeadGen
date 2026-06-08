@@ -67,12 +67,16 @@ export function handleCorsPreflight(event: HandlerEvent): HandlerResponse | null
 }
 
 export function getClientIp(headers: Record<string, string | undefined>) {
-  return (
-    headers["x-nf-client-connection-ip"] ||
-    headers["client-ip"] ||
-    headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    "unknown"
-  );
+  const netlifyIp = headers["x-nf-client-connection-ip"];
+  if (netlifyIp) {
+    return netlifyIp;
+  }
+
+  if (process.env.NETLIFY_DEV === "true") {
+    return headers["x-forwarded-for"]?.split(",")[0]?.trim() || headers["client-ip"] || "unknown";
+  }
+
+  return "unknown";
 }
 
 export function getBearerToken(headers: Record<string, string | undefined>) {

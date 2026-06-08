@@ -8,11 +8,19 @@ const jsonHeaders = { "content-type": "application/json" };
 const suppressingEvents = new Set(["bounce", "dropped", "spamreport"]);
 
 Deno.serve(async (req) => {
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed." }), {
-      status: 405,
-      headers: jsonHeaders
+  try {
+    return await handleRequest(req);
+  } catch (error) {
+    console.error("SendGrid webhook unexpected error.", safeLogError(error));
+    return jsonResponse((error as { statusCode?: number })?.statusCode || 500, {
+      error: (error as { statusCode?: number })?.statusCode === 400 ? "Invalid JSON payload." : "Unexpected webhook error."
     });
+  }
+});
+
+async function handleRequest(req: Request) {
+  if (req.method !== "POST") {
+    return jsonResponse(405, { error: "Method not allowed." });
   }
 
   const bodyText = await req.text();
@@ -25,24 +33,18 @@ Deno.serve(async (req) => {
       supabaseUrl: Deno.env.get("SUPABASE_URL") || ""
     })
   ) {
-    return new Response(JSON.stringify({ error: "Missing SendGrid signature verification key." }), {
-      status: 401,
-      headers: jsonHeaders
-    });
+    return jsonResponse(401, { error: "Missing SendGrid signature verification key." });
   }
 
   if (publicKey && !(await safelyVerifySendGridSignature(req, bodyText, publicKey))) {
-    return new Response(JSON.stringify({ error: "Invalid SendGrid signature." }), {
-      status: 401,
-      headers: jsonHeaders
-    });
+    return jsonResponse(401, { error: "Invalid SendGrid signature." });
   }
 
-  const events = JSON.parse(bodyText);
+  const events = parseJson(bodyText);
   const suppressions = (Array.isArray(events) ? events : [events]).flatMap(extractSuppression);
 
   if (!suppressions.length) {
-    return new Response(JSON.stringify({ ok: true, inserted: 0 }), { headers: jsonHeaders });
+    return jsonResponse(200, { ok: true, inserted: 0 });
   }
 
   const supabase = createClient(
@@ -53,16 +55,12 @@ Deno.serve(async (req) => {
 
   const { error } = await supabase.from("suppression").upsert(suppressions, { onConflict: "email" });
   if (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: jsonHeaders
-    });
+    console.error("SendGrid suppression upsert failed.", safeLogError(error));
+    return jsonResponse(500, { error: "Suppression write failed." });
   }
 
-  return new Response(JSON.stringify({ ok: true, inserted: suppressions.length }), {
-    headers: jsonHeaders
-  });
-});
+  return jsonResponse(200, { ok: true, inserted: suppressions.length });
+}
 
 async function safelyVerifySendGridSignature(req: Request, bodyText: string, publicKeyPem: string) {
   try {
@@ -87,4 +85,24 @@ function extractSuppression(event: any) {
       reason: eventType
     }
   ];
+}
+
+function parseJson(bodyText: string) {
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    throw Object.assign(new Error("Invalid JSON payload."), { statusCode: 400 });
+  }
+}
+
+function jsonResponse(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+}
+
+function safeLogError(error: unknown) {
+  const err = error as { code?: string; name?: string; statusCode?: number };
+  return {
+    code: err?.code || err?.name || "unknown",
+    statusCode: err?.statusCode || 500
+  };
 }

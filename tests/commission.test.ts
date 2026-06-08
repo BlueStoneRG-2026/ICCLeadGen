@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { calculateCommission } from "../netlify/functions/_shared/commission";
 import {
@@ -67,3 +68,11 @@ describe("funded idempotency guard", () => {
   });
 });
 
+describe("admin funded action", () => {
+  it("uses the atomic database RPC instead of separate update/insert calls", () => {
+    const source = readFileSync("netlify/functions/admin-action.ts", "utf8");
+    expect(source).toContain('supabase.rpc("mark_submission_funded"');
+    expect(source).not.toContain(".from(\"commissions\").insert");
+    expect(source).not.toContain(".update({ routing_state: \"funded\"");
+  });
+});

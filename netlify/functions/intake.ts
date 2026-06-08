@@ -112,12 +112,13 @@ export const handler: Handler = async (event) => {
       .single();
 
     if (insertError) {
+      await supabase.storage.from(bucket).remove([storagePath]);
       throw insertError;
     }
 
     await notifyPartner(partner.email, payload.merchantName, routingState);
     if (routingState === "va_check" && process.env.VA_QUEUE_EMAIL) {
-      await sendTransactionalEmail({
+      await safeSendTransactionalEmail({
         to: process.env.VA_QUEUE_EMAIL,
         subject: `ICC File Desk: ${payload.merchantName} ready for VA review`,
         text: `Submission ${submission.id} is ready. Descriptor: ${checker.detectedDescriptor}. File path: ${storagePath}`,
@@ -197,8 +198,19 @@ export const handler: Handler = async (event) => {
 
 async function notifyPartner(email: string, merchantName: string, routingState: string) {
   const content = statusEmail(routingState, merchantName);
-  await sendTransactionalEmail({
+  await safeSendTransactionalEmail({
     to: email,
     ...content
   });
+}
+
+async function safeSendTransactionalEmail(email: Parameters<typeof sendTransactionalEmail>[0]) {
+  try {
+    await sendTransactionalEmail(email);
+  } catch (error) {
+    console.warn("Transactional email failed after durable intake write.", {
+      subject: email.subject,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
