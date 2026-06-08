@@ -1,4 +1,4 @@
-# 06 — Automation Workflows (n8n)
+# 06 — Automation Workflows (Netlify/Supabase; n8n Phase 3)
 
 ## Phase 0–2 workflows (build now)
 **W1 — Certification + e-sign**

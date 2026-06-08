@@ -8,13 +8,13 @@ Phase 0-2 local deployable build for Iron Crown Capital's Amazon File Desk.
 - Netlify Functions for certification signup, Rescue Challenge intake, rules-only checker, partner portal data, admin actions, certified email, and unsubscribe suppression.
 - Supabase migration for the Phase 0-2 model with RLS, the corrected `pending_manual_vetting` partner state, shared rate limits, and immutable referral tokens.
 - Supabase Edge Functions for DocuSign Connect webhooks and SendGrid bounce/drop/spam suppression events.
-- Phase 3-only Docker Compose stack for n8n/Caddy/Watchtower plus DocuSeal as a future free e-sign fallback.
+- Phase 3-only Docker Compose stack for n8n/Caddy/Watchtower plus DocuSeal as a future free e-sign fallback. It is not part of the Phase 0-2 runtime.
 - Handoff kit copied into `docs/handoff`.
 - Claude-facing review notes in `docs/CLAUDE_FEEDBACK.md`.
 
 Phase 3 sourcing, outbound, boards, public leaderboard, viral loop, and partner scoring are intentionally deferred.
 
-## Local review
+## Local Review
 
 ```bash
 npm install
@@ -31,7 +31,16 @@ npm install -g netlify-cli
 netlify dev
 ```
 
-## Deploy-time values Juan supplies
+For a full local Supabase + mocked SendGrid/DocuSign flow, use [docs/LOCAL_RUNTIME.md](docs/LOCAL_RUNTIME.md). It includes seed data, teardown, and `npm run local:flow`.
+
+## Review And Deploy Docs
+
+- [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md) is the single source of truth for operator-supplied values, DNS, isolated Supabase/Netlify setup, SendGrid, and DocuSign.
+- [docs/DEPLOY_RUNBOOK.md](docs/DEPLOY_RUNBOOK.md) is the ordered final deploy script to follow after review approval.
+- [docs/TEST_SCRIPT.md](docs/TEST_SCRIPT.md) is the post-deploy validation path.
+- GitHub is the source of truth. Do not deploy loose ZIPs.
+
+## Deploy-Time Values Juan Supplies
 
 - ISO partner agreement as a DocuSign template plus field map.
 - `SENDING_DOMAIN` plus SendGrid DNS authentication and DMARC access.
