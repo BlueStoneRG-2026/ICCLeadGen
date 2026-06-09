@@ -588,6 +588,26 @@ td {
   color: var(--ink);
 }
 
+.table-action {
+  align-items: center;
+  background: transparent;
+  color: var(--oxblood);
+  display: inline-flex;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0.42rem 0.65rem;
+}
+
+.table-action:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.empty-note {
+  color: var(--muted);
+  margin: 0;
+}
+
 .status-pill {
   background: rgba(88, 96, 106, 0.12);
   border-radius: 999px;

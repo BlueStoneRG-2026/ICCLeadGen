@@ -1,7 +1,7 @@
 import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { env, handleFunctionError } from "./_shared/env";
-import { certifiedPartnerEmail, sendTransactionalEmail } from "./_shared/email";
+import { certifiedPartnerEmail, enqueueTransactionalEmail, processOutboxEvent } from "./_shared/email";
 import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const PayloadSchema = z.object({
@@ -25,12 +25,17 @@ export const handler: Handler = async (event) => {
     }
 
     const payload = PayloadSchema.parse(JSON.parse(event.body || "{}"));
-    await sendTransactionalEmail({
+    const outboxEvent = await enqueueTransactionalEmail({
       to: payload.email,
       ...certifiedPartnerEmail(payload.fullName, payload.referralToken)
+    }, {
+      eventKey: `certified:${payload.referralToken}`,
+      template: "certified_partner",
+      payload: { referralToken: payload.referralToken }
     });
+    const result = await processOutboxEvent(outboxEvent.id, { force: true });
 
-    return jsonResponse(200, { ok: true, message: "Certified email sent." });
+    return jsonResponse(200, { ok: result.ok, message: result.message });
   } catch (error) {
     return handleFunctionError(error);
   }

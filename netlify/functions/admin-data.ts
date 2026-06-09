@@ -51,6 +51,16 @@ export const handler: Handler = async (event) => {
       throw commissions.error;
     }
 
+    const outbox = await supabase
+      .from("outbox_events")
+      .select("id,event_key,status,template,to_email,attempts,max_attempts,next_attempt_at,last_error,updated_at")
+      .in("status", ["queued", "failed", "dead"])
+      .order("updated_at", { ascending: false })
+      .limit(50);
+    if (outbox.error) {
+      throw outbox.error;
+    }
+
     const commissionRows = (commissions.data || []) as any[];
     const firstCommissionByPartner = new Map<string, string>();
     [...commissionRows]
@@ -101,6 +111,18 @@ export const handler: Handler = async (event) => {
         requiresFirstDealReview:
           row.payout_state === "accrued" && firstCommissionByPartner.get(row.partner_id) === String(row.id),
         createdAt: row.created_at
+      })),
+      outboxEvents: (outbox.data || []).map((row) => ({
+        id: row.id,
+        eventKey: row.event_key,
+        status: row.status,
+        template: row.template,
+        toEmail: row.to_email,
+        attempts: row.attempts,
+        maxAttempts: row.max_attempts,
+        nextAttemptAt: row.next_attempt_at,
+        lastError: row.last_error,
+        updatedAt: row.updated_at
       }))
     });
   } catch (error) {

@@ -6,6 +6,8 @@ import {
   FileCheck2,
   Landmark,
   LockKeyhole,
+  MailWarning,
+  RefreshCw,
   Send,
   ShieldCheck,
   Sparkles,
@@ -639,6 +641,34 @@ function AdminDashboardContent({ accessToken }: { accessToken?: string }) {
               row.requiresFirstDealReview ? "First funded deal" : "Standard"
             ])}
           />
+        </section>
+
+        <section className="panel wide">
+          <div className="panel-title">
+            <MailWarning size={20} />
+            <h2>Email outbox</h2>
+          </div>
+          {data.outboxEvents.length ? (
+            <DataTable
+              columns={["Template", "Recipient", "State", "Retry"]}
+              rows={data.outboxEvents.map((event) => [
+                event.template,
+                event.toEmail,
+                `${event.status} · ${event.attempts}/${event.maxAttempts}`,
+                <button
+                  className="table-action"
+                  disabled={event.status === "dead"}
+                  onClick={() => run("retry_outbox_event", { outboxEventId: event.id })}
+                  type="button"
+                >
+                  <RefreshCw size={14} />
+                  Retry
+                </button>
+              ])}
+            />
+          ) : (
+            <p className="empty-note">No stuck transactional emails.</p>
+          )}
         </section>
       </div>
     </section>

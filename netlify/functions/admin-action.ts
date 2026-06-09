@@ -1,7 +1,15 @@
 import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { env, handleFunctionError, requireAdmin, supabaseAdmin } from "./_shared/env";
-import { certifiedPartnerEmail, sendTransactionalEmail, statusEmail } from "./_shared/email";
+import {
+  certifiedEmailEventKey,
+  certifiedPartnerEmail,
+  enqueueTransactionalEmail,
+  processOutboxEvent,
+  sendTransactionalEmail,
+  statusEmail,
+  submissionStatusEmailEventKey
+} from "./_shared/email";
 import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
 const ActionSchema = z.discriminatedUnion("action", [
@@ -16,6 +24,10 @@ const ActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("resend_certified_email"),
     partnerId: z.string().uuid()
+  }),
+  z.object({
+    action: z.literal("retry_outbox_event"),
+    outboxEventId: z.string().uuid()
   }),
   z.object({
     action: z.literal("mark_funded"),
@@ -70,7 +82,7 @@ export const handler: Handler = async (event) => {
       }
 
       await sendUnderwritingPackage(submission);
-      await notifyPartner(submission.partner.email, submission.merchant_name, "underwriting");
+      await notifyPartner(submission.id, submission.partner.email, submission.merchant_name, "underwriting");
       return jsonResponse(200, {
         ok: true,
         message: "Submission marked underwriting and intake package sent."
@@ -79,11 +91,24 @@ export const handler: Handler = async (event) => {
 
     if (payload.action === "resend_certified_email") {
       const partner = await fetchCertifiedPartner(payload.partnerId);
-      await sendTransactionalEmail({
+      const outboxEvent = await enqueueTransactionalEmail({
         to: partner.email,
         ...certifiedPartnerEmail(partner.full_name, partner.referral_token)
+      }, {
+        eventKey: certifiedEmailEventKey(payload.partnerId),
+        template: "certified_partner",
+        payload: { partnerId: payload.partnerId }
       });
-      return jsonResponse(200, { ok: true, message: "Certified partner email re-sent." });
+      const result = await processOutboxEvent(outboxEvent.id, { force: true });
+      return jsonResponse(200, {
+        ok: result.ok,
+        message: result.ok ? "Certified partner email queued and sent." : result.message
+      });
+    }
+
+    if (payload.action === "retry_outbox_event") {
+      const result = await processOutboxEvent(payload.outboxEventId, { force: true });
+      return jsonResponse(200, { ok: result.ok, message: result.message });
     }
 
     const submission = await fetchSubmission(payload.submissionId);
@@ -107,7 +132,7 @@ export const handler: Handler = async (event) => {
       return jsonResponse(200, { ok: true, message: fundingResult.message });
     }
 
-    await notifyPartner(partner.email, submission.merchant_name, "funded");
+    await notifyPartner(submission.id, partner.email, submission.merchant_name, "funded");
     return jsonResponse(200, {
       ok: true,
       message: fundingResult.firstDeal
@@ -170,15 +195,23 @@ async function sendUnderwritingPackage(submission: any) {
       `File path: ${submission.file_path}`
     ].join("\n"),
     html: `<p><strong>${submission.merchant_name}</strong></p><ul><li>Partner: ${submission.partner.full_name} &lt;${submission.partner.email}&gt;</li><li>Descriptor: ${submission.detected_descriptor}</li><li>Decision: ${submission.checker_decision}</li><li>File path: ${submission.file_path}</li></ul>`
+  }, {
+    eventKey: `submission:${submission.id}:underwriting-package`,
+    template: "underwriting_package",
+    payload: { submissionId: submission.id }
   });
 }
 
-async function notifyPartner(email: string, merchantName: string, routingState: string) {
+async function notifyPartner(submissionId: string, email: string, merchantName: string, routingState: string) {
   const content = statusEmail(routingState, merchantName);
   try {
     await sendTransactionalEmail({
       to: email,
       ...content
+    }, {
+      eventKey: submissionStatusEmailEventKey(submissionId, routingState),
+      template: `status_${routingState}`,
+      payload: { submissionId, routingState }
     });
   } catch (error) {
     console.warn("Partner status email failed after durable admin action.", {

@@ -2,7 +2,7 @@ import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { runRulesOnlyChecker } from "./_shared/checker";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
-import { sendTransactionalEmail, statusEmail } from "./_shared/email";
+import { sendTransactionalEmail, statusEmail, submissionStatusEmailEventKey } from "./_shared/email";
 import { extractCheckerText, validateSubmissionFile } from "./_shared/file-validation";
 import { getClientIp, handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { parseMultipart } from "./_shared/multipart";
@@ -116,13 +116,17 @@ export const handler: Handler = async (event) => {
       throw insertError;
     }
 
-    await notifyPartner(partner.email, payload.merchantName, routingState);
+    await notifyPartner(submission.id, partner.email, payload.merchantName, routingState);
     if (routingState === "va_check" && process.env.VA_QUEUE_EMAIL) {
       await safeSendTransactionalEmail({
         to: process.env.VA_QUEUE_EMAIL,
         subject: `ICC File Desk: ${payload.merchantName} ready for VA review`,
         text: `Submission ${submission.id} is ready. Descriptor: ${checker.detectedDescriptor}. File path: ${storagePath}`,
         html: `<p><strong>${payload.merchantName}</strong> is ready for VA review.</p><p>Descriptor: ${checker.detectedDescriptor}</p><p>File path: ${storagePath}</p>`
+      }, {
+        eventKey: `submission:${submission.id}:va-queue`,
+        template: "va_queue",
+        payload: { submissionId: submission.id }
       });
     }
 
@@ -196,17 +200,24 @@ export const handler: Handler = async (event) => {
   }
 };
 
-async function notifyPartner(email: string, merchantName: string, routingState: string) {
+async function notifyPartner(submissionId: string, email: string, merchantName: string, routingState: string) {
   const content = statusEmail(routingState, merchantName);
   await safeSendTransactionalEmail({
     to: email,
     ...content
+  }, {
+    eventKey: submissionStatusEmailEventKey(submissionId, routingState),
+    template: `status_${routingState}`,
+    payload: { submissionId, routingState }
   });
 }
 
-async function safeSendTransactionalEmail(email: Parameters<typeof sendTransactionalEmail>[0]) {
+async function safeSendTransactionalEmail(
+  email: Parameters<typeof sendTransactionalEmail>[0],
+  options?: Parameters<typeof sendTransactionalEmail>[1]
+) {
   try {
-    await sendTransactionalEmail(email);
+    await sendTransactionalEmail(email, options);
   } catch (error) {
     console.warn("Transactional email failed after durable intake write.", {
       subject: email.subject,

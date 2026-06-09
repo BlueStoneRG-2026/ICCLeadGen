@@ -142,5 +142,19 @@ export const mockAdminData: AdminData = {
       requiresFirstDealReview: true,
       createdAt: "2026-06-06T12:00:00Z"
     }
+  ],
+  outboxEvents: [
+    {
+      id: "outbox_001",
+      eventKey: "partner:partner_certified:certified-email",
+      status: "failed",
+      template: "certified_partner",
+      toEmail: "avery@stonewc.com",
+      attempts: 1,
+      maxAttempts: 5,
+      nextAttemptAt: "2026-06-08T13:00:00Z",
+      lastError: "send_error",
+      updatedAt: "2026-06-08T12:50:00Z"
+    }
   ]
 };
