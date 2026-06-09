@@ -4,6 +4,10 @@ dist
 supabase/.temp
 .env
 .env.local
+.env.production
+.env.production.local
+.env.deploy
+.env.smoke
 .DS_Store
 *.log
 coverage

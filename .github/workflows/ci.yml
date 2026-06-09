@@ -42,6 +42,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Production readiness template
+        run: npm run readiness:prod -- --env-file .env.production.template --allow-placeholders
+
       - name: Audit
         run: npm audit --audit-level=moderate
 
