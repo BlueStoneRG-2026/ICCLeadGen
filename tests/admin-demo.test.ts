@@ -58,7 +58,21 @@ const baseData: AdminData = {
       clawbackEligible: true,
       payoutState: "accrued",
       requiresFirstDealReview: true,
+      firstFundedReviewCleared: false,
       createdAt: "2026-05-01T00:00:00Z"
+    },
+    {
+      id: "comm-authorized",
+      submissionId: "sub-authorized",
+      partnerEmail: "paid@agency.test",
+      fundedAmount: 30000,
+      isRenewal: false,
+      payoutOwed: 3300,
+      clawbackEligible: true,
+      payoutState: "authorized",
+      requiresFirstDealReview: false,
+      firstFundedReviewCleared: false,
+      createdAt: "2026-05-02T00:00:00Z"
     }
   ],
   outboxEvents: [
@@ -133,6 +147,25 @@ describe("demo admin daily loop", () => {
     const next = applyDemoAdminAction(baseData, "retry_outbox_event", { outboxEventId: "outbox-1" });
     expect(next?.outboxEvents).toEqual([]);
   });
+
+  it("requires first-funded review clearance before demo payout authorization", () => {
+    const blocked = applyDemoAdminAction(baseData, "authorize_commission_payout", { commissionId: "comm-existing" });
+    expect(blocked?.commissions.find((row) => row.id === "comm-existing")?.payoutState).toBe("accrued");
+
+    const reviewed = applyDemoAdminAction(baseData, "clear_commission_review", { commissionId: "comm-existing" });
+    expect(reviewed?.commissions.find((row) => row.id === "comm-existing")?.firstFundedReviewCleared).toBe(true);
+
+    const authorized = applyDemoAdminAction(reviewed, "authorize_commission_payout", { commissionId: "comm-existing" });
+    expect(authorized?.commissions.find((row) => row.id === "comm-existing")?.payoutState).toBe("authorized");
+  });
+
+  it("moves authorized commissions to paid without double advancing accrued rows", () => {
+    const paid = applyDemoAdminAction(baseData, "mark_commission_paid", { commissionId: "comm-authorized" });
+    expect(paid?.commissions.find((row) => row.id === "comm-authorized")?.payoutState).toBe("paid");
+
+    const unchanged = applyDemoAdminAction(baseData, "mark_commission_paid", { commissionId: "comm-existing" });
+    expect(unchanged?.commissions.find((row) => row.id === "comm-existing")?.payoutState).toBe("accrued");
+  });
 });
 
 describe("live admin endpoint guardrails", () => {
@@ -144,6 +177,7 @@ describe("live admin endpoint guardrails", () => {
     expect(actionSource).toContain("await requireAdmin(event)");
     expect(dataSource).toContain("\"underwriting\"");
     expect(dataSource).toContain("firstCommissionByPartner");
+    expect(dataSource).toContain("firstFundedReviewCleared");
   });
 
   it("keeps certified email resend allowlist-gated and branded", () => {
@@ -157,5 +191,21 @@ describe("live admin endpoint guardrails", () => {
     expect(actionSource).toContain("processOutboxEvent");
     expect(actionSource).toContain("certifiedPartnerEmail");
     expect(actionSource).toContain('data.status !== "certified"');
+  });
+
+  it("keeps payout actions allowlist-gated and server-side audited", () => {
+    const actionSource = readFileSync("netlify/functions/admin-action.ts", "utf8");
+    const envSource = readFileSync("netlify/functions/_shared/env.ts", "utf8");
+
+    expect(actionSource).toContain("const adminUser = await requireAdmin(event)");
+    expect(actionSource).toContain('z.literal("clear_commission_review")');
+    expect(actionSource).toContain('z.literal("authorize_commission_payout")');
+    expect(actionSource).toContain('z.literal("mark_commission_paid")');
+    expect(actionSource).toContain('supabase.rpc("clear_commission_first_funded_review"');
+    expect(actionSource).toContain('supabase.rpc("transition_commission_payout"');
+    expect(actionSource).toContain("p_admin_email: adminEmail");
+    expect(actionSource).not.toContain("p_admin_email: payload");
+    expect(envSource).toContain("const user = await requireUser(event)");
+    expect(envSource).toContain("admins.includes(email)");
   });
 });

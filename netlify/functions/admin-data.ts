@@ -108,8 +108,8 @@ export const handler: Handler = async (event) => {
         payoutOwed: Number(row.payout_owed),
         clawbackEligible: row.clawback_eligible,
         payoutState: row.payout_state,
-        requiresFirstDealReview:
-          row.payout_state === "accrued" && firstCommissionByPartner.get(row.partner_id) === String(row.id),
+        requiresFirstDealReview: firstCommissionByPartner.get(row.partner_id) === String(row.id),
+        firstFundedReviewCleared: Boolean(row.first_funded_review_cleared),
         createdAt: row.created_at
       })),
       outboxEvents: (outbox.data || []).map((row) => ({

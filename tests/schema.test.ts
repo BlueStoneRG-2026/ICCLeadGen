@@ -6,6 +6,7 @@ const idempotency = readFileSync("supabase/migrations/0002_commission_idempotenc
 const atomicFunding = readFileSync("supabase/migrations/0003_atomic_funding_and_rpc_grants.sql", "utf8");
 const outbox = readFileSync("supabase/migrations/0004_outbox_events.sql", "utf8");
 const esignEnvelopes = readFileSync("supabase/migrations/0005_partner_esign_envelopes.sql", "utf8");
+const payoutWorkflow = readFileSync("supabase/migrations/0006_commission_payout_workflow.sql", "utf8");
 const schemaEntrypoint = readFileSync("supabase/schema.sql", "utf8");
 
 describe("Supabase schema invariants", () => {
@@ -67,5 +68,22 @@ describe("Supabase schema invariants", () => {
     expect(esignEnvelopes).toContain("expires_at TIMESTAMPTZ NOT NULL");
     expect(esignEnvelopes).toContain("ALTER TABLE public.partner_esign_envelopes ENABLE ROW LEVEL SECURITY");
     expect(schemaEntrypoint).toContain("0005_partner_esign_envelopes.sql");
+  });
+
+  it("keeps payout transitions atomic, idempotent, audited, and service-role-only", () => {
+    expect(payoutWorkflow).toContain("CREATE TABLE IF NOT EXISTS public.commission_payout_audit");
+    expect(payoutWorkflow).toContain("ALTER TABLE public.commission_payout_audit ENABLE ROW LEVEL SECURITY");
+    expect(payoutWorkflow).toContain("CREATE OR REPLACE FUNCTION public.transition_commission_payout");
+    expect(payoutWorkflow).toContain("FOR UPDATE");
+    expect(payoutWorkflow).toContain("IF old_state = p_next_state THEN");
+    expect(payoutWorkflow).toContain("(old_state = 'accrued' AND p_next_state = 'authorized')");
+    expect(payoutWorkflow).toContain("(old_state = 'authorized' AND p_next_state = 'paid')");
+    expect(payoutWorkflow).toContain("RAISE EXCEPTION 'cannot skip or reverse payout state'");
+    expect(payoutWorkflow).toContain("first funded review must be cleared before payout authorization");
+    expect(payoutWorkflow).toContain("INSERT INTO public.commission_payout_audit");
+    expect(payoutWorkflow).toContain("commission_id BIGINT NOT NULL REFERENCES public.commissions(id)");
+    expect(payoutWorkflow).toContain("REVOKE ALL ON FUNCTION public.transition_commission_payout(BIGINT, TEXT, TEXT) FROM PUBLIC, anon, authenticated");
+    expect(payoutWorkflow).toContain("GRANT EXECUTE ON FUNCTION public.transition_commission_payout(BIGINT, TEXT, TEXT) TO service_role");
+    expect(schemaEntrypoint).toContain("0006_commission_payout_workflow.sql");
   });
 });

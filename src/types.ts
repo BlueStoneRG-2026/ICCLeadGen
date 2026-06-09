@@ -87,7 +87,13 @@ export interface AdminData {
     createdAt: string;
   }>;
   queue: Array<SubmissionRow & { partnerEmail: string; partnerName: string }>;
-  commissions: Array<CommissionRow & { partnerEmail: string; requiresFirstDealReview: boolean }>;
+  commissions: Array<
+    CommissionRow & {
+      partnerEmail: string;
+      requiresFirstDealReview: boolean;
+      firstFundedReviewCleared: boolean;
+    }
+  >;
   outboxEvents: Array<{
     id: string;
     eventKey: string;

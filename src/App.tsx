@@ -633,12 +633,17 @@ function AdminDashboardContent({ accessToken }: { accessToken?: string }) {
             <h2>Payout review</h2>
           </div>
           <DataTable
-            columns={["Partner", "Payout", "State", "Review"]}
+            columns={["Partner", "Payout", "State", "Review", "Action"]}
             rows={data.commissions.map((row) => [
               row.partnerEmail,
               formatMoney(row.payoutOwed),
               row.payoutState,
-              row.requiresFirstDealReview ? "First funded deal" : "Standard"
+              row.requiresFirstDealReview
+                ? row.firstFundedReviewCleared
+                  ? "Review cleared"
+                  : "First funded deal"
+                : "Standard",
+              <PayoutAction row={row} run={run} />
             ])}
           />
         </section>
@@ -715,6 +720,48 @@ function NichePages() {
       </div>
     </section>
   );
+}
+
+function PayoutAction({
+  row,
+  run
+}: {
+  row: AdminData["commissions"][number];
+  run: (action: string, payload: Record<string, unknown>) => void;
+}) {
+  if (row.requiresFirstDealReview && !row.firstFundedReviewCleared) {
+    return (
+      <button
+        className="table-action"
+        onClick={() => run("clear_commission_review", { commissionId: row.id })}
+        type="button"
+      >
+        Clear review
+      </button>
+    );
+  }
+
+  if (row.payoutState === "accrued") {
+    return (
+      <button
+        className="table-action"
+        onClick={() => run("authorize_commission_payout", { commissionId: row.id })}
+        type="button"
+      >
+        Authorize
+      </button>
+    );
+  }
+
+  if (row.payoutState === "authorized") {
+    return (
+      <button className="table-action" onClick={() => run("mark_commission_paid", { commissionId: row.id })} type="button">
+        Mark paid
+      </button>
+    );
+  }
+
+  return <span className="muted-cell">Done</span>;
 }
 
 function ProofItem({ icon, label }: { icon: React.ReactNode; label: string }) {
