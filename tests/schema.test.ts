@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const schema = readFileSync("supabase/migrations/0001_phase_0_2_schema.sql", "utf8");
 const idempotency = readFileSync("supabase/migrations/0002_commission_idempotency.sql", "utf8");
 const atomicFunding = readFileSync("supabase/migrations/0003_atomic_funding_and_rpc_grants.sql", "utf8");
+const outbox = readFileSync("supabase/migrations/0004_outbox_events.sql", "utf8");
 const schemaEntrypoint = readFileSync("supabase/schema.sql", "utf8");
 
 describe("Supabase schema invariants", () => {
@@ -42,5 +43,18 @@ describe("Supabase schema invariants", () => {
     expect(atomicFunding).toContain("REVOKE ALL ON FUNCTION public.consume_rate_limit(TEXT, INT, INT) FROM PUBLIC, anon, authenticated");
     expect(atomicFunding).toContain("GRANT EXECUTE ON FUNCTION public.consume_rate_limit(TEXT, INT, INT) TO service_role");
     expect(schemaEntrypoint).toContain("0003_atomic_funding_and_rpc_grants.sql");
+  });
+
+  it("keeps the transactional outbox durable, bounded, and service-role-only", () => {
+    expect(outbox).toContain("CREATE TABLE IF NOT EXISTS public.outbox_events");
+    expect(outbox).toContain("event_key TEXT UNIQUE NOT NULL");
+    expect(outbox).toContain("max_attempts INT NOT NULL DEFAULT 5 CHECK (max_attempts BETWEEN 1 AND 10)");
+    expect(outbox).toContain("attempts < max_attempts");
+    expect(outbox).toContain("CREATE OR REPLACE FUNCTION public.claim_outbox_event");
+    expect(outbox).toContain("CREATE OR REPLACE FUNCTION public.mark_outbox_sent");
+    expect(outbox).toContain("CREATE OR REPLACE FUNCTION public.mark_outbox_failed");
+    expect(outbox).toContain("REVOKE ALL ON FUNCTION public.claim_outbox_event(UUID) FROM PUBLIC, anon, authenticated");
+    expect(outbox).toContain("GRANT EXECUTE ON FUNCTION public.claim_outbox_event(UUID) TO service_role");
+    expect(schemaEntrypoint).toContain("0004_outbox_events.sql");
   });
 });

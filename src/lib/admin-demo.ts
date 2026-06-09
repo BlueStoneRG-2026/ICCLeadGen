@@ -52,5 +52,12 @@ export function applyDemoAdminAction(data: AdminData | null, action: string, pay
     };
   }
 
+  if (action === "retry_outbox_event") {
+    return {
+      ...data,
+      outboxEvents: data.outboxEvents.filter((event) => event.id !== payload.outboxEventId)
+    };
+  }
+
   return data;
 }

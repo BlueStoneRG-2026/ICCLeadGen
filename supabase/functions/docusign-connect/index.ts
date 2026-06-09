@@ -56,7 +56,10 @@ async function handleRequest(req: Request) {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    { auth: { persistSession: false } }
+    {
+      auth: { persistSession: false },
+      global: { fetch: fetchWithTimeout }
+    }
   );
 
   const partnerResult = await supabase
@@ -150,7 +153,7 @@ async function sendCertifiedEmail(email: string, fullName: string, referralToken
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -176,6 +179,22 @@ function parseJson(bodyText: string) {
 
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}) {
+  const timeoutMs = Number(Deno.env.get("EXTERNAL_CALL_TIMEOUT_MS") || "8000");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: init.signal || controller.signal });
+  } catch (error) {
+    if ((error as { name?: string })?.name === "AbortError") {
+      throw Object.assign(new Error("External request timed out."), { statusCode: 504 });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function safeLogError(error: unknown) {

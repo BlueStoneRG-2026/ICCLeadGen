@@ -2,7 +2,7 @@ import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { createPartnerAgreementEnvelope } from "./_shared/docusign";
 import { handleFunctionError, supabaseAdmin } from "./_shared/env";
-import { isoReadyEmail, sendTransactionalEmail } from "./_shared/email";
+import { isoReadyEmail, isoReadyEmailEventKey, sendTransactionalEmail } from "./_shared/email";
 import { getClientIp, handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { enforceRateLimit } from "./_shared/rate-limit";
 import { rateLimitPolicies } from "./_shared/abuse-policy";
@@ -97,6 +97,10 @@ export const handler: Handler = async (event) => {
     await sendTransactionalEmail({
       to: payload.email,
       ...isoReadyEmail(envelope.signingUrl)
+    }, {
+      eventKey: isoReadyEmailEventKey(userId, envelope.envelopeId),
+      template: "iso_ready",
+      payload: { partnerId: userId, envelopeId: envelope.envelopeId }
     });
 
     return jsonResponse(200, {

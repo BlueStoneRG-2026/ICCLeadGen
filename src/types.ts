@@ -88,4 +88,16 @@ export interface AdminData {
   }>;
   queue: Array<SubmissionRow & { partnerEmail: string; partnerName: string }>;
   commissions: Array<CommissionRow & { partnerEmail: string; requiresFirstDealReview: boolean }>;
+  outboxEvents: Array<{
+    id: string;
+    eventKey: string;
+    status: "queued" | "failed" | "dead";
+    template: string;
+    toEmail: string;
+    attempts: number;
+    maxAttempts: number;
+    nextAttemptAt: string;
+    lastError?: string | null;
+    updatedAt: string;
+  }>;
 }

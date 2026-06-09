@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { env } from "./env";
+import { externalTimeoutMs, withExternalTimeout } from "./timeout";
 
 interface PartnerAgreementEnvelopeInput {
   email: string;
@@ -119,18 +120,21 @@ async function requestDocusignJwtToken({
     normalizePrivateKey(privateKey)
   );
 
-  const response = await fetch(`https://${authServer}/oauth/token`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt
-    })
-  });
+  const response = await withExternalTimeout(
+    "DocuSign JWT token",
+    fetch(`https://${authServer}/oauth/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt
+      })
+    }),
+    externalTimeoutMs("DOCUSIGN_CALL_TIMEOUT_MS")
+  );
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`DocuSign JWT token request failed: ${text}`);
+    throw Object.assign(new Error("DocuSign JWT token request failed."), { statusCode: 502 });
   }
 
   const body = (await response.json()) as DocusignToken;
@@ -138,18 +142,21 @@ async function requestDocusignJwtToken({
 }
 
 async function docusignFetch<T>(url: string, accessToken: string, init: RequestInit) {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${accessToken}`,
-      ...(init.headers || {})
-    }
-  });
+  const response = await withExternalTimeout(
+    "DocuSign API request",
+    fetch(url, {
+      ...init,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+        ...(init.headers || {})
+      }
+    }),
+    externalTimeoutMs("DOCUSIGN_CALL_TIMEOUT_MS")
+  );
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`DocuSign API request failed: ${text}`);
+    throw Object.assign(new Error("DocuSign API request failed."), { statusCode: 502 });
   }
 
   return (await response.json()) as T;

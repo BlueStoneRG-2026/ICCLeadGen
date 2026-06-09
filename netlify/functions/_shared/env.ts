@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { HandlerEvent } from "@netlify/functions";
 import { getBearerToken, jsonResponse } from "./http";
+import { fetchWithTimeout } from "./timeout";
 import { ZodError } from "zod";
 
 export function env(name: string, fallback = "") {
@@ -17,7 +18,8 @@ export function requireEnv(name: string) {
 
 export function supabaseAdmin() {
   return createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
-    auth: { persistSession: false, autoRefreshToken: false }
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: fetchWithTimeout }
   });
 }
 
@@ -25,6 +27,7 @@ export function supabaseAnon(accessToken: string) {
   return createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_ANON_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
     global: {
+      fetch: fetchWithTimeout,
       headers: { authorization: `Bearer ${accessToken}` }
     }
   });
@@ -124,6 +127,7 @@ export function handleFunctionError(error: unknown) {
 function errorCodeForStatus(statusCode: number) {
   if (statusCode === 401) return "unauthorized";
   if (statusCode === 403) return "forbidden";
+  if (statusCode === 504) return "upstream_timeout";
   if (statusCode === 413) return "payload_too_large";
   if (statusCode === 415) return "unsupported_media_type";
   if (statusCode === 422) return "unprocessable_entity";

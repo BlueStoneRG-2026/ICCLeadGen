@@ -1,6 +1,8 @@
 import sgMail from "@sendgrid/mail";
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { env } from "./env";
+import { env, supabaseAdmin } from "./env";
+import { externalTimeoutMs, fetchWithTimeout, withExternalTimeout } from "./timeout";
 
 export interface TransactionalEmail {
   to: string | string[];
@@ -8,6 +10,31 @@ export interface TransactionalEmail {
   text: string;
   html: string;
   preheader?: string;
+}
+
+export interface SendEmailOptions {
+  eventKey?: string;
+  template?: string;
+  payload?: Record<string, unknown>;
+  queueOnFailure?: boolean;
+  fromOutbox?: boolean;
+}
+
+export interface OutboxEventRow {
+  id: string;
+  event_key: string;
+  kind: "transactional_email";
+  status: "queued" | "processing" | "sent" | "failed" | "dead";
+  template: string;
+  to_email: string;
+  payload: {
+    email?: TransactionalEmail;
+    metadata?: Record<string, unknown>;
+  };
+  attempts: number;
+  max_attempts: number;
+  next_attempt_at: string;
+  last_error?: string | null;
 }
 
 const brand = {
@@ -20,7 +47,7 @@ const brand = {
   muted: "#75655d"
 };
 
-export async function sendTransactionalEmail(email: TransactionalEmail) {
+export async function sendTransactionalEmail(email: TransactionalEmail, options: SendEmailOptions = {}) {
   const apiKey = env("SENDGRID_API_KEY");
   const sendingDomain = env("SENDING_DOMAIN", "partners.ironcrowncapital.com");
   const from = env("TRANSACTIONAL_FROM", `Iron Crown File Desk <desk@${sendingDomain}>`);
@@ -45,28 +72,164 @@ export async function sendTransactionalEmail(email: TransactionalEmail) {
       to: deliverableRecipients,
       subject: email.subject
     });
+    if (options.queueOnFailure !== false && !options.fromOutbox && outboxAvailable()) {
+      const queued = await enqueueTransactionalEmail(email, options);
+      return { skipped: false, queued: true, outboxEventId: queued.id };
+    }
     return { skipped: true };
   }
 
   sgMail.setApiKey(apiKey);
-  await sgMail.send({
-    to: deliverableRecipients,
-    from,
-    replyTo,
-    subject: email.subject,
-    text: email.text,
-    html: renderTransactionalEmailHtml(email, unsubscribeUrl),
-    headers: {
-      "List-Unsubscribe": listUnsubscribe,
-      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
-    },
-    trackingSettings: {
-      clickTracking: { enable: false, enableText: false },
-      openTracking: { enable: false }
+  try {
+    await withExternalTimeout(
+      "SendGrid send",
+      sgMail.send({
+        to: deliverableRecipients,
+        from,
+        replyTo,
+        subject: email.subject,
+        text: email.text,
+        html: renderTransactionalEmailHtml(email, unsubscribeUrl),
+        headers: {
+          "List-Unsubscribe": listUnsubscribe,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        },
+        trackingSettings: {
+          clickTracking: { enable: false, enableText: false },
+          openTracking: { enable: false }
+        }
+      }),
+      externalTimeoutMs("SENDGRID_CALL_TIMEOUT_MS")
+    );
+  } catch (error) {
+    if (options.queueOnFailure !== false && !options.fromOutbox && outboxAvailable()) {
+      const queued = await enqueueTransactionalEmail(email, options);
+      console.warn("Transactional email queued after send failure.", {
+        eventKey: queued.event_key,
+        template: queued.template,
+        error: safeOutboxError(error)
+      });
+      return { skipped: false, queued: true, outboxEventId: queued.id };
     }
-  });
+    throw error;
+  }
 
   return { skipped: false };
+}
+
+export async function enqueueTransactionalEmail(email: TransactionalEmail, options: SendEmailOptions = {}) {
+  const supabase = supabaseAdmin();
+  const eventKey = options.eventKey || emailEventKey(email);
+  const firstRecipient = Array.isArray(email.to) ? email.to[0] : email.to;
+  const payload = {
+    email,
+    metadata: options.payload || {}
+  };
+
+  const insert = await supabase
+    .from("outbox_events")
+    .insert({
+      event_key: eventKey,
+      kind: "transactional_email",
+      status: "queued",
+      template: options.template || "custom",
+      to_email: firstRecipient.toLowerCase(),
+      payload
+    })
+    .select("*")
+    .single();
+
+  if (!insert.error && insert.data) {
+    return insert.data as OutboxEventRow;
+  }
+
+  const existing = await supabase.from("outbox_events").select("*").eq("event_key", eventKey).single();
+  if (existing.error || !existing.data) {
+    throw insert.error || existing.error || new Error("Outbox event could not be persisted.");
+  }
+  return existing.data as OutboxEventRow;
+}
+
+export async function processOutboxEvent(eventId: string, options: { force?: boolean } = {}) {
+  const supabase = supabaseAdmin();
+  if (options.force) {
+    await supabase
+      .from("outbox_events")
+      .update({ next_attempt_at: new Date().toISOString() })
+      .eq("id", eventId)
+      .in("status", ["queued", "failed"]);
+  }
+
+  const current = await supabase.from("outbox_events").select("*").eq("id", eventId).single();
+  if (current.error || !current.data) {
+    throw current.error || new Error("Outbox event not found.");
+  }
+  if (current.data.status === "sent") {
+    return { ok: true, status: "sent", message: "Outbox event was already sent." };
+  }
+
+  const claim = await supabase.rpc("claim_outbox_event", { p_id: eventId });
+  if (claim.error) {
+    throw claim.error;
+  }
+  if (!claim.data) {
+    return {
+      ok: false,
+      status: current.data.status,
+      message: "Outbox event is not eligible for retry."
+    };
+  }
+
+  const event = claim.data as OutboxEventRow;
+  try {
+    const email = event.payload?.email;
+    if (!email?.to || !email.subject || !email.text || !email.html) {
+      throw new Error("Outbox email payload is incomplete.");
+    }
+    await sendTransactionalEmail(email, { queueOnFailure: false, fromOutbox: true });
+    await supabase.rpc("mark_outbox_sent", { p_id: eventId });
+    return { ok: true, status: "sent", message: "Outbox event sent." };
+  } catch (error) {
+    await supabase.rpc("mark_outbox_failed", {
+      p_id: eventId,
+      p_error: safeOutboxError(error)
+    });
+    return { ok: false, status: "failed", message: "Outbox event send failed." };
+  }
+}
+
+export async function processDueOutbox(limit = 10) {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("outbox_events")
+    .select("id")
+    .in("status", ["queued", "failed"])
+    .lte("next_attempt_at", new Date().toISOString())
+    .lt("attempts", 5)
+    .order("next_attempt_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  const results = [];
+  for (const row of data || []) {
+    results.push(await processOutboxEvent(row.id));
+  }
+  return results;
+}
+
+export function certifiedEmailEventKey(partnerId: string) {
+  return `partner:${partnerId}:certified-email`;
+}
+
+export function isoReadyEmailEventKey(partnerId: string, envelopeId: string) {
+  return `partner:${partnerId}:iso-ready:${envelopeId}`;
+}
+
+export function submissionStatusEmailEventKey(submissionId: string, routingState: string) {
+  return `submission:${submissionId}:partner-status:${routingState}`;
 }
 
 async function filterSuppressed(recipients: string[]) {
@@ -77,7 +240,8 @@ async function filterSuppressed(recipients: string[]) {
   }
 
   const supabase = createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: fetchWithTimeout }
   });
   const { data, error } = await supabase
     .from("suppression")
@@ -94,6 +258,27 @@ async function filterSuppressed(recipients: string[]) {
 
   const suppressed = new Set((data || []).map((row) => row.email.toLowerCase()));
   return recipients.filter((recipient) => !suppressed.has(recipient.toLowerCase()));
+}
+
+function emailEventKey(email: TransactionalEmail) {
+  const hash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ to: email.to, subject: email.subject, text: email.text }))
+    .digest("hex")
+    .slice(0, 32);
+  return `email:${hash}`;
+}
+
+function outboxAvailable() {
+  return Boolean(env("SUPABASE_URL") && env("SUPABASE_SERVICE_ROLE_KEY"));
+}
+
+function safeOutboxError(error: unknown) {
+  const err = error as { code?: string; name?: string; message?: string; statusCode?: number };
+  return [err?.code || err?.name || "send_error", err?.statusCode || "", err?.message || ""]
+    .filter(Boolean)
+    .join(": ")
+    .slice(0, 240);
 }
 
 export function statusEmail(state: string, merchantName: string) {

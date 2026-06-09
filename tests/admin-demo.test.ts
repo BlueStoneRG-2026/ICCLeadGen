@@ -60,6 +60,20 @@ const baseData: AdminData = {
       requiresFirstDealReview: true,
       createdAt: "2026-05-01T00:00:00Z"
     }
+  ],
+  outboxEvents: [
+    {
+      id: "outbox-1",
+      eventKey: "certified:ICC-CERT-1",
+      status: "failed",
+      template: "certified_partner",
+      toEmail: "certified@agency.test",
+      attempts: 1,
+      maxAttempts: 5,
+      nextAttemptAt: "2026-06-08T12:00:00Z",
+      lastError: "send_error",
+      updatedAt: "2026-06-08T11:55:00Z"
+    }
   ]
 };
 
@@ -114,6 +128,11 @@ describe("demo admin daily loop", () => {
     expect(next?.certifiedPartners).toEqual(baseData.certifiedPartners);
     expect(next?.pendingPartners).toEqual(baseData.pendingPartners);
   });
+
+  it("removes a stuck outbox row after demo retry", () => {
+    const next = applyDemoAdminAction(baseData, "retry_outbox_event", { outboxEventId: "outbox-1" });
+    expect(next?.outboxEvents).toEqual([]);
+  });
 });
 
 describe("live admin endpoint guardrails", () => {
@@ -132,7 +151,10 @@ describe("live admin endpoint guardrails", () => {
     const actionSource = readFileSync("netlify/functions/admin-action.ts", "utf8");
 
     expect(dataSource).toContain("certifiedPartners");
+    expect(dataSource).toContain("outboxEvents");
     expect(actionSource).toContain('z.literal("resend_certified_email")');
+    expect(actionSource).toContain('z.literal("retry_outbox_event")');
+    expect(actionSource).toContain("processOutboxEvent");
     expect(actionSource).toContain("certifiedPartnerEmail");
     expect(actionSource).toContain('data.status !== "certified"');
   });
