@@ -36,7 +36,13 @@ export function referralToken(firmName?: string | null) {
 }
 
 export function safeFileName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 120);
+  const base = name.split(/[\\/]/).filter(Boolean).pop() || "statement";
+  const sanitized = base
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^\.+/, "")
+    .slice(0, 120);
+  return sanitized || "statement";
 }
 
 export function randomPassword() {
