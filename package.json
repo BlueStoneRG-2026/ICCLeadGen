@@ -9,6 +9,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "local:flow": "node scripts/local-flow.mjs",
+    "deploy:netlify": "node scripts/deploy-netlify.mjs",
+    "deploy:supabase": "node scripts/deploy-supabase.mjs",
+    "readiness:prod": "node scripts/production-readiness.mjs",
+    "smoke:live": "node scripts/smoke-live.mjs",
     "test:rls": "node scripts/rls-cross-partner-test.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
