@@ -12,6 +12,10 @@ import {
 } from "./_shared/email";
 import { handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 
+const CommissionIdSchema = z
+  .union([z.string().regex(/^\d+$/), z.number().int().positive()])
+  .transform((value) => Number(value));
+
 const ActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("approve_partner"),
@@ -30,6 +34,18 @@ const ActionSchema = z.discriminatedUnion("action", [
     outboxEventId: z.string().uuid()
   }),
   z.object({
+    action: z.literal("clear_commission_review"),
+    commissionId: CommissionIdSchema
+  }),
+  z.object({
+    action: z.literal("authorize_commission_payout"),
+    commissionId: CommissionIdSchema
+  }),
+  z.object({
+    action: z.literal("mark_commission_paid"),
+    commissionId: CommissionIdSchema
+  }),
+  z.object({
     action: z.literal("mark_funded"),
     submissionId: z.string().uuid(),
     fundedAmount: z.coerce.number().positive(),
@@ -46,7 +62,11 @@ export const handler: Handler = async (event) => {
   }
 
   try {
-    await requireAdmin(event);
+    const adminUser = await requireAdmin(event);
+    const adminEmail = adminUser.email?.toLowerCase();
+    if (!adminEmail) {
+      throw Object.assign(new Error("Admin email is required."), { statusCode: 403 });
+    }
     const payload = ActionSchema.parse(JSON.parse(event.body || "{}"));
     const supabase = supabaseAdmin();
 
@@ -109,6 +129,30 @@ export const handler: Handler = async (event) => {
     if (payload.action === "retry_outbox_event") {
       const result = await processOutboxEvent(payload.outboxEventId, { force: true });
       return jsonResponse(200, { ok: result.ok, message: result.message });
+    }
+
+    if (payload.action === "clear_commission_review") {
+      const result = await supabase.rpc("clear_commission_first_funded_review", {
+        p_commission_id: payload.commissionId,
+        p_admin_email: adminEmail
+      });
+      if (result.error) {
+        throw result.error;
+      }
+      return jsonResponse(200, { ok: true, ...(result.data as Record<string, unknown>) });
+    }
+
+    if (payload.action === "authorize_commission_payout" || payload.action === "mark_commission_paid") {
+      const nextState = payload.action === "authorize_commission_payout" ? "authorized" : "paid";
+      const result = await supabase.rpc("transition_commission_payout", {
+        p_commission_id: payload.commissionId,
+        p_next_state: nextState,
+        p_admin_email: adminEmail
+      });
+      if (result.error) {
+        throw result.error;
+      }
+      return jsonResponse(200, { ok: true, ...(result.data as Record<string, unknown>) });
     }
 
     const submission = await fetchSubmission(payload.submissionId);

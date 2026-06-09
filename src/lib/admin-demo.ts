@@ -45,6 +45,7 @@ export function applyDemoAdminAction(data: AdminData | null, action: string, pay
           clawbackEligible: fundedAmount > 10000,
           payoutState: "accrued" as const,
           requiresFirstDealReview: !partnerHasCommission,
+          firstFundedReviewCleared: false,
           createdAt: new Date().toISOString()
         },
         ...data.commissions
@@ -56,6 +57,39 @@ export function applyDemoAdminAction(data: AdminData | null, action: string, pay
     return {
       ...data,
       outboxEvents: data.outboxEvents.filter((event) => event.id !== payload.outboxEventId)
+    };
+  }
+
+  if (action === "clear_commission_review") {
+    return {
+      ...data,
+      commissions: data.commissions.map((commission) =>
+        commission.id === payload.commissionId ? { ...commission, firstFundedReviewCleared: true } : commission
+      )
+    };
+  }
+
+  if (action === "authorize_commission_payout") {
+    return {
+      ...data,
+      commissions: data.commissions.map((commission) =>
+        commission.id === payload.commissionId &&
+        commission.payoutState === "accrued" &&
+        (!commission.requiresFirstDealReview || commission.firstFundedReviewCleared)
+          ? { ...commission, payoutState: "authorized" as const }
+          : commission
+      )
+    };
+  }
+
+  if (action === "mark_commission_paid") {
+    return {
+      ...data,
+      commissions: data.commissions.map((commission) =>
+        commission.id === payload.commissionId && commission.payoutState === "authorized"
+          ? { ...commission, payoutState: "paid" as const }
+          : commission
+      )
     };
   }
 

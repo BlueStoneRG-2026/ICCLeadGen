@@ -3,3 +3,4 @@
 \i ./migrations/0003_atomic_funding_and_rpc_grants.sql
 \i ./migrations/0004_outbox_events.sql
 \i ./migrations/0005_partner_esign_envelopes.sql
+\i ./migrations/0006_commission_payout_workflow.sql

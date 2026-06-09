@@ -140,6 +140,7 @@ export const mockAdminData: AdminData = {
       clawbackEligible: true,
       payoutState: "accrued",
       requiresFirstDealReview: true,
+      firstFundedReviewCleared: false,
       createdAt: "2026-06-06T12:00:00Z"
     }
   ],
