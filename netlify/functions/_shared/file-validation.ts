@@ -56,6 +56,10 @@ function validatePdf(buffer: Buffer) {
   }
 
   const scan = buffer.toString("latin1", 0, Math.min(buffer.byteLength, 1_000_000));
+  if (scan.includes("PK\u0003\u0004")) {
+    throw Object.assign(new Error("PDF polyglot content was rejected."), { statusCode: 422 });
+  }
+
   if (/\/JavaScript|\/JS|\/AA|\/OpenAction/i.test(scan)) {
     throw Object.assign(new Error("PDF includes active script content and was rejected."), { statusCode: 422 });
   }
@@ -108,6 +112,10 @@ function extractXlsxText(buffer: Buffer) {
           throw Object.assign(new Error("XLSX has too many ZIP entries."), { statusCode: 413 });
         }
 
+        if (hasUnsafeZipPath(file.name)) {
+          throw Object.assign(new Error("XLSX ZIP path is unsafe."), { statusCode: 422 });
+        }
+
         const wanted =
           file.name === "[Content_Types].xml" ||
           file.name === "xl/sharedStrings.xml" ||
@@ -146,4 +154,8 @@ function extractXlsxText(buffer: Buffer) {
     .map((name) => decoder.decode(files[name]).replace(/<[^>]+>/g, " "))
     .join("\n")
     .slice(0, 120_000);
+}
+
+function hasUnsafeZipPath(name: string) {
+  return name.startsWith("/") || name.includes("\\") || name.split("/").some((part) => part === "..");
 }

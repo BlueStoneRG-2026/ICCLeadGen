@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import { validateSubmissionFile } from "../netlify/functions/_shared/file-validation";
+import { safeFileName } from "../netlify/functions/_shared/partner";
 
 function pdf(content = "") {
   return Buffer.from(`%PDF-1.4\n1 0 obj\n<<>>\nstream\n${content}\nendstream\nendobj\n%%EOF`, "latin1");
@@ -35,6 +36,15 @@ function xlsxWithLargeXml() {
     zipSync({
       "[Content_Types].xml": strToU8("<Types></Types>"),
       "xl/worksheets/sheet1.xml": strToU8(`<worksheet>${"A".repeat(2 * 1024 * 1024 + 1)}</worksheet>`)
+    })
+  );
+}
+
+function xlsxWithPathTraversal() {
+  return Buffer.from(
+    zipSync({
+      "[Content_Types].xml": strToU8("<Types></Types>"),
+      "xl/worksheets/../evil.xml": strToU8("<worksheet><sheetData><row><c><v>Date</v></c></row></sheetData></worksheet>")
     })
   );
 }
@@ -90,6 +100,26 @@ describe("submission file validation", () => {
     });
   });
 
+  it("rejects MIME-spoofed active PDFs even when uploaded as CSV", async () => {
+    await expect(validateSubmissionFile(pdf("/AA /JS"), "text/csv")).rejects.toMatchObject({
+      statusCode: 422
+    });
+  });
+
+  it("rejects PDF/ZIP polyglot files", async () => {
+    await expect(validateSubmissionFile(Buffer.concat([pdf(), Buffer.from("PK\u0003\u0004zip-tail")]), "application/pdf")).rejects.toMatchObject({
+      statusCode: 422
+    });
+  });
+
+  it("rejects XLSX ZIP path traversal entries", async () => {
+    await expect(
+      validateSubmissionFile(xlsxWithPathTraversal(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ).rejects.toMatchObject({
+      statusCode: 422
+    });
+  });
+
   it("rejects wrong magic bytes for claimed PDFs", async () => {
     await expect(validateSubmissionFile(Buffer.from("not actually a pdf"), "application/pdf")).rejects.toMatchObject({
       statusCode: 422
@@ -100,5 +130,10 @@ describe("submission file validation", () => {
     await expect(validateSubmissionFile(Buffer.from("MZ fake executable"), "application/octet-stream")).rejects.toMatchObject({
       statusCode: 415
     });
+  });
+
+  it("normalizes path-traversal upload filenames before storage", () => {
+    expect(safeFileName("../../secret/statement.csv")).toBe("statement.csv");
+    expect(safeFileName("..\\..\\statement.csv")).toBe("statement.csv");
   });
 });
