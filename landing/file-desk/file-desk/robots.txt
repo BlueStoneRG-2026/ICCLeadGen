@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /file-desk/
+
+Sitemap: https://www.ironcrowncapital.com/file-desk/sitemap.xml
