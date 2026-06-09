@@ -8,6 +8,7 @@ interface PartnerAgreementEnvelopeInput {
   firmName?: string | null;
   partnerId: string;
   referralToken: string;
+  existingEnvelopeId?: string | null;
 }
 
 interface DocusignToken {
@@ -25,10 +26,12 @@ export async function createPartnerAgreementEnvelope(input: PartnerAgreementEnve
 
   if (!accountId || !templateId || !integrationKey || !impersonatedUserId || !privateKey) {
     return {
-      envelopeId: `stub_${input.referralToken}`,
+      envelopeId: input.existingEnvelopeId || `stub_${input.referralToken}`,
       signingUrl: `https://docusign.example.com/stub/${input.referralToken}`,
       provider: "docusign",
-      stubbed: true
+      stubbed: true,
+      reused: Boolean(input.existingEnvelopeId),
+      status: "sent"
     };
   }
 
@@ -39,6 +42,40 @@ export async function createPartnerAgreementEnvelope(input: PartnerAgreementEnve
   });
   const basePath = env("DOCUSIGN_BASE_PATH", "https://demo.docusign.net/restapi").replace(/\/$/, "");
   const roleName = env("DOCUSIGN_TEMPLATE_ROLE_NAME", "Signer1");
+
+  let previousEnvelopeStatus = "";
+  if (input.existingEnvelopeId) {
+    const existing = await docusignFetch<{ status?: string }>(
+      `${basePath}/v2.1/accounts/${encodeURIComponent(accountId)}/envelopes/${encodeURIComponent(
+        input.existingEnvelopeId
+      )}`,
+      accessToken,
+      { method: "GET" }
+    );
+    const status = String(existing.status || "").toLowerCase();
+    previousEnvelopeStatus = status;
+    if (isReusableEnvelopeStatus(status)) {
+      const view = await createRecipientView(basePath, accountId, accessToken, input.existingEnvelopeId, input);
+      return {
+        envelopeId: input.existingEnvelopeId,
+        signingUrl: view.url,
+        provider: "docusign",
+        stubbed: false,
+        reused: true,
+        status
+      };
+    }
+    if (status === "completed") {
+      return {
+        envelopeId: input.existingEnvelopeId,
+        signingUrl: env("DOCUSIGN_RETURN_URL", "https://partners.ironcrowncapital.com/#portal"),
+        provider: "docusign",
+        stubbed: false,
+        reused: true,
+        status
+      };
+    }
+  }
 
   const envelope = await docusignFetch<{ envelopeId: string }>(
     `${basePath}/v2.1/accounts/${encodeURIComponent(accountId)}/envelopes`,
@@ -68,9 +105,33 @@ export async function createPartnerAgreementEnvelope(input: PartnerAgreementEnve
     }
   );
 
-  const view = await docusignFetch<{ url: string }>(
+  const view = await createRecipientView(basePath, accountId, accessToken, envelope.envelopeId, input);
+
+  return {
+    envelopeId: envelope.envelopeId,
+    signingUrl: view.url,
+    provider: "docusign",
+    stubbed: false,
+    reused: false,
+    status: "sent",
+    previousEnvelopeStatus
+  };
+}
+
+export function isReusableEnvelopeStatus(status: string) {
+  return new Set(["created", "sent", "delivered"]).has(status.toLowerCase());
+}
+
+async function createRecipientView(
+  basePath: string,
+  accountId: string,
+  accessToken: string,
+  envelopeId: string,
+  input: PartnerAgreementEnvelopeInput
+) {
+  return docusignFetch<{ url: string }>(
     `${basePath}/v2.1/accounts/${encodeURIComponent(accountId)}/envelopes/${encodeURIComponent(
-      envelope.envelopeId
+      envelopeId
     )}/views/recipient`,
     accessToken,
     {
@@ -84,13 +145,6 @@ export async function createPartnerAgreementEnvelope(input: PartnerAgreementEnve
       })
     }
   );
-
-  return {
-    envelopeId: envelope.envelopeId,
-    signingUrl: view.url,
-    provider: "docusign",
-    stubbed: false
-  };
 }
 
 async function requestDocusignJwtToken({

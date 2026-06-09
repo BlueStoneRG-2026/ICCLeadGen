@@ -5,6 +5,7 @@ const schema = readFileSync("supabase/migrations/0001_phase_0_2_schema.sql", "ut
 const idempotency = readFileSync("supabase/migrations/0002_commission_idempotency.sql", "utf8");
 const atomicFunding = readFileSync("supabase/migrations/0003_atomic_funding_and_rpc_grants.sql", "utf8");
 const outbox = readFileSync("supabase/migrations/0004_outbox_events.sql", "utf8");
+const esignEnvelopes = readFileSync("supabase/migrations/0005_partner_esign_envelopes.sql", "utf8");
 const schemaEntrypoint = readFileSync("supabase/schema.sql", "utf8");
 
 describe("Supabase schema invariants", () => {
@@ -56,5 +57,15 @@ describe("Supabase schema invariants", () => {
     expect(outbox).toContain("REVOKE ALL ON FUNCTION public.claim_outbox_event(UUID) FROM PUBLIC, anon, authenticated");
     expect(outbox).toContain("GRANT EXECUTE ON FUNCTION public.claim_outbox_event(UUID) TO service_role");
     expect(schemaEntrypoint).toContain("0004_outbox_events.sql");
+  });
+
+  it("tracks partner e-sign envelopes separately from completed certification state", () => {
+    expect(esignEnvelopes).toContain("CREATE TABLE IF NOT EXISTS public.partner_esign_envelopes");
+    expect(esignEnvelopes).toContain("partner_id UUID NOT NULL REFERENCES public.partners(id)");
+    expect(esignEnvelopes).toContain("envelope_id TEXT UNIQUE NOT NULL");
+    expect(esignEnvelopes).toContain("status IN ('created','sent','delivered','completed','declined','voided','expired')");
+    expect(esignEnvelopes).toContain("expires_at TIMESTAMPTZ NOT NULL");
+    expect(esignEnvelopes).toContain("ALTER TABLE public.partner_esign_envelopes ENABLE ROW LEVEL SECURITY");
+    expect(schemaEntrypoint).toContain("0005_partner_esign_envelopes.sql");
   });
 });
