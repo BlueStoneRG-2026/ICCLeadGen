@@ -75,6 +75,7 @@ async function handleRequest(req: Request) {
 
   const partner = partnerResult.data;
   if (partner.status === "certified" && partner.esign_envelope_id === envelopeId) {
+    await markEnvelopeCompleted(supabase, envelopeId);
     return jsonResponse(200, { ok: true, idempotent: true });
   }
 
@@ -96,12 +97,23 @@ async function handleRequest(req: Request) {
     console.error("DocuSign partner update failed.", safeLogError(update.error));
     return jsonResponse(500, { error: "Partner update failed." });
   }
+  await markEnvelopeCompleted(supabase, envelopeId);
 
   if (nextStatus === "certified") {
     await sendCertifiedEmail(partner.email, partner.full_name, partner.referral_token);
   }
 
   return jsonResponse(200, { ok: true, status: nextStatus });
+}
+
+async function markEnvelopeCompleted(supabase: any, envelopeId: string) {
+  const { error } = await supabase
+    .from("partner_esign_envelopes")
+    .update({ status: "completed", updated_at: new Date().toISOString() })
+    .eq("envelope_id", envelopeId);
+  if (error) {
+    console.warn("DocuSign envelope tracking update failed.", safeLogError(error));
+  }
 }
 
 async function safelyVerifyDocusignHmac(body: string, secret: string, signatureHeader: string) {

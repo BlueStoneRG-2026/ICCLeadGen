@@ -1,7 +1,7 @@
 import type { Handler } from "@netlify/functions";
 import { z } from "zod";
 import { createPartnerAgreementEnvelope } from "./_shared/docusign";
-import { handleFunctionError, supabaseAdmin } from "./_shared/env";
+import { env, handleFunctionError, supabaseAdmin } from "./_shared/env";
 import { isoReadyEmail, isoReadyEmailEventKey, sendTransactionalEmail } from "./_shared/email";
 import { getClientIp, handleCorsPreflight, jsonResponse, methodNotAllowed } from "./_shared/http";
 import { enforceRateLimit } from "./_shared/rate-limit";
@@ -64,14 +64,6 @@ export const handler: Handler = async (event) => {
     const token = existing.data?.referral_token || referralToken(payload.firmName);
     const userId = existing.data?.id || (await createAuthUser(payload.email, payload.fullName, payload.firmName));
 
-    const envelope = await createPartnerAgreementEnvelope({
-      email: payload.email,
-      fullName: payload.fullName,
-      firmName: payload.firmName,
-      partnerId: userId,
-      referralToken: token
-    });
-
     const { error: upsertError } = await supabase.from("partners").upsert(
       {
         id: userId,
@@ -94,6 +86,27 @@ export const handler: Handler = async (event) => {
       throw upsertError;
     }
 
+    if (status === "certified") {
+      return jsonResponse(200, {
+        partnerId: userId,
+        partnerStatus: status,
+        signingUrl: env("DOCUSIGN_RETURN_URL", "https://partners.ironcrowncapital.com/#portal"),
+        referralToken: token,
+        message: "Partner is already certified. No new DocuSign envelope was created."
+      });
+    }
+
+    const reusableEnvelope = await findReusableEnvelope(userId);
+    const envelope = await createPartnerAgreementEnvelope({
+      email: payload.email,
+      fullName: payload.fullName,
+      firmName: payload.firmName,
+      partnerId: userId,
+      referralToken: token,
+      existingEnvelopeId: reusableEnvelope?.envelope_id || null
+    });
+    await recordEnvelope(userId, envelope, reusableEnvelope);
+
     await sendTransactionalEmail({
       to: payload.email,
       ...isoReadyEmail(envelope.signingUrl)
@@ -111,7 +124,9 @@ export const handler: Handler = async (event) => {
       message:
         status === "pending_manual_vetting"
           ? "Signup received. A VA must approve this partner before submissions open."
-          : "Signup created. Send the partner to the DocuSign signing URL."
+          : envelope.reused
+            ? "Signup found the existing DocuSign envelope. Send the partner to the embedded signing URL."
+            : "Signup created. Send the partner to the DocuSign signing URL."
     });
 
     async function createAuthUser(email: string, fullName: string, firmName: string) {
@@ -130,7 +145,60 @@ export const handler: Handler = async (event) => {
       }
       return data.user.id;
     }
+
+    async function findReusableEnvelope(partnerId: string) {
+      const { data, error } = await supabase
+        .from("partner_esign_envelopes")
+        .select("id,envelope_id,status,expires_at")
+        .eq("partner_id", partnerId)
+        .in("status", ["created", "sent", "delivered", "completed"])
+        .gt("expires_at", new Date().toISOString())
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        throw error;
+      }
+      return data;
+    }
+
+    async function recordEnvelope(
+      partnerId: string,
+      envelope: Awaited<ReturnType<typeof createPartnerAgreementEnvelope>>,
+      reusableEnvelope?: { id: string; envelope_id: string; status: string; expires_at: string } | null
+    ) {
+      if (reusableEnvelope && !envelope.reused) {
+        await supabase
+          .from("partner_esign_envelopes")
+          .update({
+            status: envelope.previousEnvelopeStatus || "expired",
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", reusableEnvelope.id);
+      }
+
+      const expiresAt = new Date(Date.now() + envelopeValidityDays() * 24 * 60 * 60 * 1000).toISOString();
+      const { error } = await supabase.from("partner_esign_envelopes").upsert(
+        {
+          partner_id: partnerId,
+          provider: "docusign",
+          envelope_id: envelope.envelopeId,
+          status: envelope.status || "sent",
+          expires_at: reusableEnvelope && envelope.reused ? reusableEnvelope.expires_at : expiresAt,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "envelope_id" }
+      );
+      if (error) {
+        throw error;
+      }
+    }
   } catch (error) {
     return handleFunctionError(error);
   }
 };
+
+function envelopeValidityDays() {
+  const days = Number(env("DOCUSIGN_ENVELOPE_VALID_DAYS", "30"));
+  return Number.isFinite(days) && days > 0 ? days : 30;
+}
